@@ -13,6 +13,10 @@ mmce1.7.10 非官方移植版。
 
 NEI、Waila、Mekanism、AE2、GregTech 5、IC2、匠魂、热力膨胀、神秘时代 4、植物魔法、血魔法均为软依赖，不装也能启动。
 
+## 文档
+
+详细的功能清单、兼容性与使用说明见 [食用方法.md](食用方法.md)。
+
 ## 构建
 
 需要 JDK 25 运行 Gradle（见 `.java-version`），JDK 8 由 `JAVA8_HOME` 指定用于编译：
