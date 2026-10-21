@@ -1,0 +1,731 @@
+/*******************************************************************************
+ * HellFirePvP / Modular Machinery 2019
+ *
+ * This project is licensed under GNU GENERAL PUBLIC LICENSE Version 3.
+ * The source code is available on github: https://github.com/HellFirePvP/ModularMachinery
+ * For further details, see the License file there.
+ ******************************************************************************/
+
+package hellfirepvp.modularmachinery.common.util;
+
+import github.kasuminova.mmce.compat.RegistryNames;
+
+import github.kasuminova.mmce.compat.Worlds;
+
+import github.kasuminova.mmce.compat.ItemStacks;
+
+import com.github.bsideup.jabel.Desugar;
+import com.google.gson.JsonParseException;
+import github.kasuminova.mmce.compat.crt.ZenRegister;
+import github.kasuminova.mmce.common.helper.AdvancedBlockChecker;
+import github.kasuminova.mmce.common.machine.pattern.SpecialItemBlockProxy;
+import github.kasuminova.mmce.common.machine.pattern.SpecialItemBlockProxyRegistry;
+import github.kasuminova.mmce.common.util.BlockPos2ValueMap;
+import hellfirepvp.modularmachinery.client.ClientScheduler;
+import hellfirepvp.modularmachinery.common.util.nbt.NBTJsonSerializer;
+import hellfirepvp.modularmachinery.common.util.nbt.NBTMatchingHelper;
+import ink.ikx.mmce.common.utils.StackUtils;
+import ink.ikx.mmce.common.utils.StructureIngredient;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import net.minecraft.block.Block;
+import github.kasuminova.mmce.compat.IBlockState;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.tileentity.TileEntity;
+import github.kasuminova.mmce.compat.ResourceLocation;
+import github.kasuminova.mmce.compat.Tuple;
+import github.kasuminova.mmce.compat.BlockPos;
+import net.minecraft.world.World;
+import net.minecraft.world.gen.structure.StructureBoundingBox;
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
+import stanhebben.zenscript.annotations.ZenClass;
+
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
+
+/**
+ * This class is part of the Modular Machinery Mod
+ * The complete source code for this mod can be found on github.
+ * Class: BlockArray
+ * Created by HellFirePvP
+ * Date: 27.06.2017 / 10:50
+ */
+@ZenRegister
+@ZenClass("mods.modularmachinery.BlockArray")
+public class BlockArray {
+    private static final ResourceLocation IC_2_TILE_BLOCK = new ResourceLocation("ic2", "te");
+
+    public final long uid;
+
+    protected Map<BlockPos, BlockInformation> pattern         = new BlockPos2ValueMap<>();
+    protected Map<BlockPos, BlockInformation> tileBlocksArray = new BlockPos2ValueMap<>();
+    private   BlockPos                        min             = new BlockPos(0, 0, 0), max = new BlockPos(0, 0, 0), size = new BlockPos(0, 0, 0);
+
+    public BlockArray() {
+        this.uid = BlockArrayCache.nextUID();
+    }
+
+    public BlockArray(long uid) {
+        this.uid = uid;
+    }
+
+    public BlockArray(BlockArray other) {
+        this.pattern = new BlockPos2ValueMap<>(other.pattern);
+        this.min = new BlockPos(other.min.getX(), other.min.getY(), other.min.getZ());
+        this.max = new BlockPos(other.max.getX(), other.max.getY(), other.max.getZ());
+        this.size = new BlockPos(other.size.getX(), other.size.getY(), other.size.getZ());
+
+        this.uid = other.uid;
+    }
+
+    public BlockArray(BlockArray other, BlockPos offset) {
+        for (Map.Entry<BlockPos, BlockInformation> otherEntry : other.pattern.entrySet()) {
+            this.pattern.put(otherEntry.getKey().add(offset), otherEntry.getValue());
+        }
+        this.min = new BlockPos(offset.getX() + other.min.getX(), offset.getY() + other.min.getY(), offset.getZ() + other.min.getZ());
+        this.max = new BlockPos(offset.getX() + other.max.getX(), offset.getY() + other.max.getY(), offset.getZ() + other.max.getZ());
+        this.size = new BlockPos(other.size.getX(), other.size.getY(), other.size.getZ());
+
+        this.uid = other.uid;
+    }
+
+    public StructureBoundingBox getPatternBoundingBox(final BlockPos ctrlPos) {
+        BlockPos min = ctrlPos.add(this.min);
+        BlockPos max = ctrlPos.add(this.max);
+        return new StructureBoundingBox(min.getX(), min.getY(), min.getZ(), max.getX(), max.getY(), max.getZ());
+    }
+
+    public void flushTileBlocksCache() {
+        tileBlocksArray.clear();
+        pattern.forEach((pos, info) -> {
+            if (info.hasTileEntity()) {
+                tileBlocksArray.put(pos, info);
+            }
+        });
+    }
+
+    public void overwrite(BlockArray other) {
+        this.pattern = new BlockPos2ValueMap<>(other.pattern);
+        this.min = new BlockPos(other.min.getX(), other.min.getY(), other.min.getZ());
+        this.max = new BlockPos(other.max.getX(), other.max.getY(), other.max.getZ());
+        this.size = new BlockPos(other.size.getX(), other.size.getY(), other.size.getZ());
+    }
+
+    public void addBlock(int x, int y, int z, @Nonnull BlockInformation info) {
+        addBlock(new BlockPos(x, y, z), info);
+    }
+
+    public void addBlock(BlockPos offset, @Nonnull BlockInformation info) {
+        pattern.put(offset, info.canonicalize());
+        updateSize(offset);
+    }
+
+    public boolean hasBlockAt(BlockPos pos) {
+        return pattern.containsKey(pos);
+    }
+
+    public boolean isEmpty() {
+        return pattern.isEmpty();
+    }
+
+    public BlockPos getMax() {
+        return max;
+    }
+
+    public BlockPos getMin() {
+        return min;
+    }
+
+    public BlockPos getSize() {
+        return size;
+    }
+
+    private void updateSize(BlockPos addedPos) {
+        if (addedPos.getX() < min.getX()) {
+            min = new BlockPos(addedPos.getX(), min.getY(), min.getZ());
+        }
+        if (addedPos.getX() > max.getX()) {
+            max = new BlockPos(addedPos.getX(), max.getY(), max.getZ());
+        }
+        if (addedPos.getY() < min.getY()) {
+            min = new BlockPos(min.getX(), addedPos.getY(), min.getZ());
+        }
+        if (addedPos.getY() > max.getY()) {
+            max = new BlockPos(max.getX(), addedPos.getY(), max.getZ());
+        }
+        if (addedPos.getZ() < min.getZ()) {
+            min = new BlockPos(min.getX(), min.getY(), addedPos.getZ());
+        }
+        if (addedPos.getZ() > max.getZ()) {
+            max = new BlockPos(max.getX(), max.getY(), addedPos.getZ());
+        }
+        size = new BlockPos(max.getX() - min.getX() + 1, max.getY() - min.getY() + 1, max.getZ() - min.getZ() + 1);
+    }
+
+    public Map<BlockPos, BlockInformation> getPattern() {
+        return pattern;
+    }
+
+    public Map<BlockPos, BlockInformation> getTileBlocksArray() {
+        return tileBlocksArray;
+    }
+
+    public Map<BlockPos, BlockInformation> getPatternSlice(int slice) {
+        Map<BlockPos, BlockInformation> copy = new BlockPos2ValueMap<>();
+        for (BlockPos pos : pattern.keySet()) {
+            if (pos.getY() == slice) {
+                copy.put(pos, pattern.get(pos));
+            }
+        }
+        return copy;
+    }
+
+    @SideOnly(Side.CLIENT)
+    public List<ItemStack> getAsDescriptiveStacks() {
+        return getAsDescriptiveStacks(-1);
+    }
+
+    @SideOnly(Side.CLIENT)
+    public List<ItemStack> getAsDescriptiveStacks(long snapSample) {
+        List<ItemStack> out = new LinkedList<>();
+        pattern.forEach((key, bi) -> {
+            ItemStack s = bi.getDescriptiveStack(snapSample);
+            if (ItemStacks.isEmpty(s)) {
+                return;
+            }
+
+            boolean found = false;
+            for (ItemStack stack : out) {
+                if (RegistryNames.getName(stack.getItem()).equals(RegistryNames.getName(s.getItem())) && stack.getItemDamage() == s.getItemDamage()) {
+                    ItemStacks.setCount(stack, ItemStacks.getCount(stack) + 1);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                out.add(s);
+            }
+        });
+        return out;
+    }
+
+    public List<List<ItemStack>> getIngredientList() {
+        List<List<ItemStack>> ingredient = new LinkedList<>();
+
+        pattern.forEach((pos, info) -> {
+            List<ItemStack> infoIngList = info.getIngredientList();
+            if (infoIngList.isEmpty()) {
+                return;
+            }
+
+            if (infoIngList.size() == 1) {
+                ItemStack input = infoIngList.get(0);
+
+                for (final List<ItemStack> itemStackList : ingredient) {
+                    ItemStack anotherInput = itemStackList.get(0);
+                    if (ItemUtils.matchStacks(input, anotherInput)) {
+                        ItemStacks.grow(anotherInput, 1);
+                        return;
+                    }
+                }
+            }
+
+            ingredient.add(infoIngList);
+        });
+
+        return ingredient;
+    }
+
+    public List<StructureIngredient.ItemIngredient> getBlockStateIngredientList(World world, BlockPos ctrlPos) {
+        List<StructureIngredient.ItemIngredient> ingredientList = new ArrayList<>();
+        pattern.forEach((pos, info) -> {
+            BlockPos realPos = ctrlPos.add(pos);
+            if (!info.matches(world, realPos, false)) {
+                ingredientList.add(new StructureIngredient.ItemIngredient(pos, info.getBlockStateIngredientList(), info.getMatchingTag()));
+            }
+        });
+        return ingredientList;
+    }
+
+    public List<ItemStack> getDescriptiveStackList(long snapTick) {
+        List<ItemStack> stackList = new ArrayList<>();
+
+        pattern.values().forEach((info) -> {
+            ItemStack descriptiveStack = info.getDescriptiveStack(snapTick);
+            if (ItemStacks.isEmpty(descriptiveStack)) {
+                return;
+            }
+
+            for (final ItemStack stack : stackList) {
+                if (ItemUtils.matchStacks(descriptiveStack, stack)) {
+                    ItemStacks.grow(stack, 1);
+                    return;
+                }
+            }
+
+            stackList.add(descriptiveStack);
+        });
+
+        return stackList;
+    }
+
+    public List<ItemStack> getDescriptiveStackList(long snapTick, World world, BlockPos offset) {
+        List<ItemStack> stackList = new ArrayList<>();
+
+        pattern.forEach((pos, info) -> {
+            BlockPos realPos = pos.add(offset);
+            ItemStack descriptiveStack = info.getDescriptiveStack(snapTick, realPos, world);
+            SpecialItemBlockProxy specialItemBlockProxy = SpecialItemBlockProxyRegistry.INSTANCE.getValidProxy(descriptiveStack);
+            if (specialItemBlockProxy != null) {
+                descriptiveStack = specialItemBlockProxy.getTrueStack(Worlds.getBlockState(world, realPos), Worlds.getTileEntity(world, realPos));
+            }
+            if (ItemStacks.isEmpty(descriptiveStack)) {
+                return;
+            }
+
+            for (final ItemStack stack : stackList) {
+                if (ItemUtils.matchStacks(descriptiveStack, stack)) {
+                    ItemStacks.grow(stack, 1);
+                    return;
+                }
+            }
+
+            stackList.add(descriptiveStack);
+        });
+
+        return stackList;
+    }
+
+    public boolean matches(World world, BlockPos center, boolean oldState, @Nullable Map<BlockPos, List<BlockInformation>> modifierReplacementPattern) {
+//        if (pattern.size() >= 1500) {
+//            return matchesParallel(world, center, oldState, modifierReplacementPattern);
+//        }
+
+        patternCheck:
+        for (Map.Entry<BlockPos, BlockInformation> entry : pattern.entrySet()) {
+            BlockPos at = center.add(entry.getKey());
+            // Block is matched, continue.
+            if (entry.getValue().matches(world, at, oldState)) {
+                continue;
+            }
+
+            // Block is not match, and there are no replaceable blocks in the configuration, end check.
+            if (modifierReplacementPattern == null || !modifierReplacementPattern.containsKey(entry.getKey())) {
+                return false;
+            }
+
+            // Check if the replacement block match.
+            for (BlockInformation info : modifierReplacementPattern.get(entry.getKey())) {
+                if (info.matches(world, at, oldState)) {
+                    continue patternCheck;
+                }
+            }
+
+            // All the above conditions are not valid, and the check fails.
+            return false;
+        }
+        return true;
+    }
+
+    public boolean matchesParallel(World world, BlockPos center, boolean oldState, @Nullable Map<BlockPos, List<BlockInformation>> modifierReplacementPattern) {
+        return pattern.entrySet().parallelStream().allMatch(entry -> {
+            BlockPos at = center.add(entry.getKey());
+            // Block is matched, continue.
+            if (entry.getValue().matches(world, at, oldState)) {
+                return true;
+            }
+
+            // Block is not match, and there are no replaceable blocks in the configuration, end check.
+            if (modifierReplacementPattern == null || !modifierReplacementPattern.containsKey(entry.getKey())) {
+                return false;
+            }
+
+            // Check if the replacement block match.
+            for (BlockInformation info : modifierReplacementPattern.get(entry.getKey())) {
+                if (info.matches(world, at, oldState)) {
+                    return true;
+                }
+            }
+
+            // All the above conditions are not valid, and the check fails.
+            return false;
+        });
+    }
+
+    public BlockPos getRelativeMismatchPosition(World world, BlockPos center, @Nullable Map<BlockPos, List<BlockInformation>> modifierReplacementPattern) {
+        pattern:
+        for (Map.Entry<BlockPos, BlockInformation> entry : pattern.entrySet()) {
+            BlockPos at = center.add(entry.getKey());
+            if (entry.getValue().matches(world, at, false)) {
+                continue;
+            }
+
+            if (modifierReplacementPattern == null || !modifierReplacementPattern.containsKey(entry.getKey())) {
+                return entry.getKey();
+            }
+
+            for (BlockInformation info : modifierReplacementPattern.get(entry.getKey())) {
+                if (info.matches(world, at, false)) {
+                    continue pattern;
+                }
+            }
+
+            return entry.getKey();
+        }
+        return null;
+    }
+
+    public BlockArray rotateYCCW() {
+        BlockArray out = new BlockArray(uid);
+
+        for (BlockPos pos : pattern.keySet()) {
+            BlockInformation info = pattern.get(pos);
+            out.addBlock(MiscUtils.rotateYCCW(pos), info.copyRotateYCCW());
+        }
+
+        return out;
+    }
+
+    public String serializeAsMachineJson() {
+        String newline = System.getProperty("line.separator");
+        String move = "    ";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("{").append(newline);
+        sb.append(move).append("\"parts\": [").append(newline);
+
+        Iterator<BlockPos> iterator = this.pattern.keySet().iterator();
+        while (iterator.hasNext()) {
+            BlockPos pos = iterator.next();
+            sb.append(move).append(move).append("{").append(newline);
+
+            sb.append(move).append(move).append(move).append("\"x\": ").append(pos.getX()).append(",").append(newline);
+            sb.append(move).append(move).append(move).append("\"y\": ").append(pos.getY()).append(",").append(newline);
+            sb.append(move).append(move).append(move).append("\"z\": ").append(pos.getZ()).append(",").append(newline);
+
+            BlockInformation bi = this.pattern.get(pos);
+            if (bi.getMatchingTag() != null) {
+                String strTag = NBTJsonSerializer.serializeNBT(bi.getMatchingTag());
+                sb.append(move).append(move).append(move).append("\"nbt\": ").append(strTag).append(",").append(newline);
+            }
+
+            sb.append(move).append(move).append(move).append("\"elements\": [").append(newline);
+            for (Iterator<IBlockState> iterator1 = bi.samples.iterator(); iterator1.hasNext(); ) {
+                IBlockState descriptor = iterator1.next();
+
+                int meta = descriptor.getBlock() == null ? 0 : descriptor.getMetadata();
+                String str = RegistryNames.getName(descriptor.getBlock()) + "@" + meta;
+                sb.append(move).append(move).append(move).append(move).append("\"").append(str).append("\"");
+
+                if (iterator1.hasNext()) {
+                    sb.append(",");
+                }
+                sb.append(newline);
+            }
+
+            sb.append(move).append(move).append(move).append("]").append(newline);
+            sb.append(move).append(move).append("}");
+            if (iterator.hasNext()) {
+                sb.append(",");
+            }
+            sb.append(newline);
+        }
+
+        sb.append(move).append("]");
+        sb.append("}");
+        return sb.toString();
+    }
+
+    public static class BlockInformation {
+
+        public static final int CYCLE_TICK_SPEED = 30;
+
+        private static final ObjectOpenHashSet<BlockInformation> POOL = new ObjectOpenHashSet<>();
+
+        private List<IBlockStateDescriptor> matchingStates = new ObjectArrayList<>();
+        private List<IBlockState>           samples        = new ObjectArrayList<>();
+
+        private boolean hasTileEntity;
+        private boolean hasStateMachineComponent;
+
+        private NBTTagCompound matchingTag = null;
+        private NBTTagCompound previewTag  = null;
+
+        private AdvancedBlockChecker nbtChecker = null;
+
+        public BlockInformation(List<IBlockStateDescriptor> matching) {
+            this.matchingStates.addAll(matching);
+            for (IBlockStateDescriptor desc : matchingStates) {
+                samples.addAll(desc.getApplicable());
+                if (!hasTileEntity) {
+                    hasTileEntity = desc.hasTileEntity();
+                }
+                if (!hasStateMachineComponent) {
+                    hasStateMachineComponent = desc.hasStatedMachineComponent();
+                }
+            }
+        }
+
+        public static void clearPool() {
+            POOL.clear();
+        }
+
+        public static IBlockStateDescriptor getDescriptor(String strElement) throws JsonParseException {
+            int meta = -1;
+            int indexMeta = strElement.indexOf('@');
+            if (indexMeta != -1 && indexMeta != strElement.length() - 1) {
+                try {
+                    meta = Integer.parseInt(strElement.substring(indexMeta + 1));
+                } catch (NumberFormatException exc) {
+                    throw new JsonParseException("Expected a metadata number, got " + strElement.substring(indexMeta + 1), exc);
+                }
+                strElement = strElement.substring(0, indexMeta);
+            }
+            // 1.7.10 移植：注册名区分大小写（如 Mekanism:BasicBlock），直接用原始字符串查找
+            Block block = RegistryNames.findBlock(strElement);
+            if (block == null) {
+                throw new JsonParseException("Couldn't find block with registryName '" + strElement + "' !");
+            }
+            if (meta == -1) {
+                return IBlockStateDescriptor.of(block);
+            } else {
+                return IBlockStateDescriptor.of(IBlockState.of(block, meta));
+            }
+        }
+
+        public static Tuple<ItemStack, IBlockState> getTupleIngredientFromBlockState(IBlockState state) {
+            return new Tuple<>(StackUtils.getStackFromBlockState(state), state);
+        }
+
+        public BlockInformation canonicalize() {
+            synchronized (POOL) {
+                return POOL.addOrGet(this);
+            }
+        }
+
+        public void addMatchingStates(List<IBlockStateDescriptor> matching) {
+            for (IBlockStateDescriptor desc : matching) {
+                if (!matchingStates.contains(desc)) {
+                    matchingStates.add(desc);
+                }
+                for (IBlockState state : desc.getApplicable()) {
+                    if (!samples.contains(state)) {
+                        samples.add(state);
+                    }
+                }
+                if (!hasTileEntity) {
+                    hasTileEntity = desc.hasTileEntity();
+                }
+                if (!hasStateMachineComponent) {
+                    hasStateMachineComponent = desc.hasStatedMachineComponent();
+                }
+            }
+        }
+
+        public boolean hasTileEntity() {
+            return hasTileEntity;
+        }
+
+        public boolean hasStatedMachineComponent() {
+            return hasStateMachineComponent;
+        }
+
+        public NBTTagCompound getMatchingTag() {
+            return matchingTag;
+        }
+
+        public void setMatchingTag(@Nullable NBTTagCompound matchingTag) {
+            this.matchingTag = matchingTag;
+        }
+
+        public NBTTagCompound getPreviewTag() {
+            return previewTag;
+        }
+
+        public void setPreviewTag(NBTTagCompound previewTag) {
+            this.previewTag = previewTag;
+        }
+
+        public IBlockState getSampleState() {
+            return getSampleState(-1);
+        }
+
+        public IBlockState getSampleState(long snapTick) {
+            int p = (int) ((snapTick == -1 ? ClientScheduler.getClientTick() : snapTick) / CYCLE_TICK_SPEED);
+            int part = p % samples.size();
+            return samples.get(part);
+        }
+
+        public ItemStack getDescriptiveStack(long snapTick) {
+            return StackUtils.getStackFromBlockState(getSampleState(snapTick));
+        }
+
+        public ItemStack getDescriptiveStack(long snapTick, final BlockPos pos, final World world) {
+            return StackUtils.getStackFromBlockState(getSampleState(snapTick), pos, world);
+        }
+
+        public List<ItemStack> getIngredientList() {
+            List<ItemStack> list = new ArrayList<>();
+            samples.stream()
+                   .map(StackUtils::getStackFromBlockState)
+                   .filter(stackFromBlockState -> ItemUtils.stackNotInList(list, stackFromBlockState))
+                   .forEach(list::add);
+            return list;
+        }
+
+        public List<ItemStack> getIngredientList(BlockPos pos, World world) {
+            List<ItemStack> list = new ArrayList<>();
+            samples.stream()
+                   .map(state -> StackUtils.getStackFromBlockState(state, pos, world))
+                   .filter(stackFromBlockState -> ItemUtils.stackNotInList(list, stackFromBlockState))
+                   .forEach(list::add);
+            return list;
+        }
+
+        public List<Tuple<ItemStack, IBlockState>> getBlockStateIngredientList() {
+            return samples.stream()
+                          .map(BlockInformation::getTupleIngredientFromBlockState)
+                          .collect(Collectors.toList());
+        }
+
+        public BlockInformation copyRotateYCCW() {
+            List<IBlockStateDescriptor> newDescList = new ObjectArrayList<>();
+
+            AtomicBoolean hasBlockRotated = new AtomicBoolean(false);
+            for (IBlockStateDescriptor desc : this.matchingStates) {
+                newDescList.add(desc.copyRotateYCCW(hasBlockRotated));
+            }
+
+            BlockInformation bi;
+            if (!hasBlockRotated.get()) {
+                bi = new BlockInformation(Collections.emptyList());
+                bi.matchingStates = this.matchingStates;
+                bi.samples = this.samples;
+                bi.hasTileEntity = this.hasTileEntity;
+                bi.hasStateMachineComponent = this.hasStateMachineComponent;
+            } else {
+                bi = new BlockInformation(newDescList);
+            }
+            bi.matchingTag = this.matchingTag;
+            bi.previewTag = this.previewTag;
+            bi.nbtChecker = this.nbtChecker;
+
+            return bi;
+        }
+
+        public BlockInformation copy() {
+            List<IBlockStateDescriptor> newDescList = new ObjectArrayList<>(this.matchingStates.size());
+            for (IBlockStateDescriptor desc : this.matchingStates) {
+                newDescList.add(desc.copy());
+            }
+            BlockInformation bi = new BlockInformation(newDescList);
+            bi.matchingTag = this.matchingTag;
+            bi.previewTag = this.previewTag;
+            bi.nbtChecker = this.nbtChecker;
+            return bi;
+        }
+
+        public boolean matchesState(World world, BlockPos at, IBlockState state) {
+            Block atBlock = state.getBlock();
+            int atMeta = (state).getMetadata();
+
+            for (IBlockStateDescriptor descriptor : matchingStates) {
+                // 1.7.10 移植：通配描述符（未写 @meta）匹配该方块的任意 meta
+                if (!descriptor.accepts(state)) {
+                    continue;
+                }
+                IBlockState applicable = descriptor.isWildcard() ? state : IBlockState.of(atBlock, atMeta);
+
+                if (!isNBTCheckerMatch(world, at, applicable)) {
+                    return false;
+                }
+
+                if (matchingTag != null) {
+                    TileEntity te = Worlds.getTileEntity(world, at);
+                    if (te != null && !matchingTag.hasNoTags()) {
+                        NBTTagCompound cmp = new NBTTagCompound();
+                        te.writeToNBT(cmp);
+                        return NBTMatchingHelper.matchNBTCompound(matchingTag, cmp); //No match at this position.
+                    }
+                }
+                return true;
+            }
+            return false;
+        }
+
+        public boolean matches(World world, BlockPos at, boolean default_) {
+            if (!Worlds.isBlockLoaded(world, at)) {
+                return default_;
+            }
+
+            IBlockState state = Worlds.getBlockState(world, at);
+            return matchesState(world, at, state);
+        }
+
+        private boolean isNBTCheckerMatch(World world, BlockPos at, IBlockState applicable) {
+            if (nbtChecker == null) {
+                return true;
+            }
+
+            TileEntity te = Worlds.getTileEntity(world, at);
+            if (te == null) {
+                return false;
+            }
+
+            NBTTagCompound cmp = new NBTTagCompound();
+            te.writeToNBT(cmp);
+            return nbtChecker.isMatch(world, at, applicable, cmp);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(matchingStates, matchingTag, previewTag, nbtChecker);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (o instanceof BlockInformation another) {
+                return matchingStates.equals(another.matchingStates) &&
+                    Objects.equals(matchingTag, another.matchingTag) &&
+                    Objects.equals(previewTag, another.previewTag) &&
+                    Objects.equals(nbtChecker, another.nbtChecker);
+            }
+            return false;
+        }
+
+        public AdvancedBlockChecker getNBTChecker() {
+            return nbtChecker;
+        }
+
+        public void setNBTChecker(AdvancedBlockChecker nbtChecker) {
+            this.nbtChecker = nbtChecker;
+        }
+
+        public List<IBlockStateDescriptor> getMatchingStates() {
+            return matchingStates;
+        }
+    }
+
+    @Desugar
+    public record TileInstantiateContext(World world, BlockPos pos) {
+        public void apply(TileEntity te) {
+            if (te != null) {
+                te.setWorldObj(world);
+                te.xCoord = pos.getX();
+                te.yCoord = pos.getY();
+                te.zCoord = pos.getZ();
+            }
+        }
+    }
+}

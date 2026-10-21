@@ -1,0 +1,19 @@
+// Add any additional repositories for your dependencies here.
+
+repositories {
+    // Mekanism Community Edition 1.7.10 只发布在 GitHub Releases，这里用 ivy 布局直接按版本号解析，
+    // 避免把第三方 jar 放进仓库。仅用于开发期测试（见 dependencies.gradle）。
+    exclusiveContent {
+        forRepository {
+            ivy {
+                name = "Mekanism CE GitHub Releases"
+                url = "https://github.com/Thorfusion/Mekanism-Community-Edition/releases/download/"
+                patternLayout {
+                    artifact("[revision]/[module]-1.7.10-[revision]-[classifier].[ext]")
+                }
+                metadataSources { artifact() }
+            }
+        }
+        filter { includeGroup("mekanism-ce") }
+    }
+}

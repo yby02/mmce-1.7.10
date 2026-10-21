@@ -1,0 +1,35 @@
+# 移植自 gugu-utils（https://github.com/ParaParty/gugu-utils，MIT License，Copyright (c) 2020 派瑞派对）的语言文件中环境传感器与范围建造选择工具的部分
+item.gugu-utils.constructionranged.name=Ranged Construction Selection Tool
+tile.gugu-utils.environmenthatch.name=Environment Sensor
+message.gugu-utils.rangedconstructtool.creative=Ranged Construction Tool, use together with default tool!
+tooltips.gugu-utils.environment.altitude=Work when Y >= %s and Y <= %s
+tooltips.gugu-utils.environment.time=Work from %s to %s
+tooltips.gugu-utils.environment.biome=Work in the following biomes
+tooltips.gugu-utils.environment.biome.type=§9With such tag: %s
+tooltips.gugu-utils.environment.dimension=Work in the following dimensions
+tooltips.gugu-utils.environment.weather.sunny=Works in Sunny Day
+tooltips.gugu-utils.environment.weather.raining=Works in Raining Day
+tooltips.gugu-utils.environment.weather.snowing=Works in Snowing Day
+tooltips.gugu-utils.environment.weather.thundering=Works in Thundering Day
+tooltips.gugu-utils.environment.moonphase.desc=Work in the following moon phases
+tooltips.gugu-utils.environment.moonphase.0=Full moon
+tooltips.gugu-utils.environment.moonphase.1=Waning gibbous
+tooltips.gugu-utils.environment.moonphase.2=Third quarter
+tooltips.gugu-utils.environment.moonphase.3=Waning crescent
+tooltips.gugu-utils.environment.moonphase.4=New moon
+tooltips.gugu-utils.environment.moonphase.5=Waxing crescent
+tooltips.gugu-utils.environment.moonphase.6=First quarter
+tooltips.gugu-utils.environment.moonphase.7=Waxing gibbouss
+component.missing.gugu-utils:environment.input=No Environment Sensor found!
+craftcheck.failure.gugu-utils:environment.altitude=Altitude is incorrect!
+craftcheck.failure.gugu-utils:environment.dimensions=Dimensions are incorrect!
+craftcheck.failure.gugu-utils:environment.biomes=Biomes are incorrect!
+craftcheck.failure.gugu-utils:environment.time=Not in the correct time!
+craftcheck.failure.gugu-utils:environment.weather=Not in the correct weather!
+craftcheck.failure.gugu-utils:environment.moonphase=Not have the correct moon phase!
+tooltips.gugu-utils.environmenthatch.desc=Lets a modular machine work only in specific environments (weather, moon phase, dimension, biome, altitude, time)
+message.gugu-utils.rangedconstructtool.usage=Right-click two blocks to select every non-air block in the box (fluids included), then fine-tune with the Construction Selection Tool and right-click the controller to export.
+message.gugu-utils.rangedconstructtool.start=Start point: %s, %s, %s
+message.gugu-utils.rangedconstructtool.selected=Selected %s blocks from (%s, %s, %s) to (%s, %s, %s)
+message.gugu-utils.rangedconstructtool.denied=The Ranged Construction Selection Tool only works in creative mode with permission to use commands (cheats on / OP).
+message.gugu-utils.rangedconstructtool.toolarge=Too many blocks in the box (more than %s); the selection was not changed.

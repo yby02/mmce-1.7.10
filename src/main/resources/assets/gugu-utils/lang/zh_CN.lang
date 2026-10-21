@@ -1,0 +1,35 @@
+# 移植自 gugu-utils（https://github.com/ParaParty/gugu-utils，MIT License，Copyright (c) 2020 派瑞派对）的语言文件中环境传感器与范围建造选择工具的部分
+item.gugu-utils.constructionranged.name=范围建造选择工具
+tile.gugu-utils.environmenthatch.name=环境传感器
+message.gugu-utils.rangedconstructtool.creative=范围建造工具，配合默认工具使用
+tooltips.gugu-utils.environment.altitude=当 Y >= %s 并且 Y <= %s 时工作
+tooltips.gugu-utils.environment.time=在 %s 到 %s 期间工作
+tooltips.gugu-utils.environment.biome=在以下生物群系工作
+tooltips.gugu-utils.environment.biome.type=§9包含标签 %s
+tooltips.gugu-utils.environment.dimension=在以下维度工作
+tooltips.gugu-utils.environment.weather.sunny=在晴天工作
+tooltips.gugu-utils.environment.weather.raining=在雨天工作
+tooltips.gugu-utils.environment.weather.snowing=在雪天工作
+tooltips.gugu-utils.environment.weather.thundering=在雷雨天工作
+tooltips.gugu-utils.environment.moonphase.desc=在以下月相工作
+tooltips.gugu-utils.environment.moonphase.0=满月
+tooltips.gugu-utils.environment.moonphase.1=亏凸月
+tooltips.gugu-utils.environment.moonphase.2=下弦月
+tooltips.gugu-utils.environment.moonphase.3=残月
+tooltips.gugu-utils.environment.moonphase.4=新月
+tooltips.gugu-utils.environment.moonphase.5=娥眉月
+tooltips.gugu-utils.environment.moonphase.6=上弦月
+tooltips.gugu-utils.environment.moonphase.7=盈凸月
+component.missing.gugu-utils:environment.input=缺少环境传感器！
+craftcheck.failure.gugu-utils:environment.altitude=无法在当前海拔下工作！
+craftcheck.failure.gugu-utils:environment.dimensions=无法在当前维度下工作！
+craftcheck.failure.gugu-utils:environment.biomes=无法在当前生物群系工作！
+craftcheck.failure.gugu-utils:environment.time=当前时间段无法工作！
+craftcheck.failure.gugu-utils:environment.weather=机器需要在正确的天气下！
+craftcheck.failure.gugu-utils:environment.moonphase=今晚的月相不满足工作条件！
+tooltips.gugu-utils.environmenthatch.desc=让模块化机械只在特定环境下工作（天气、月相、维度、生物群系、海拔、时间）
+message.gugu-utils.rangedconstructtool.usage=右键两个方块，选取长方体内所有非空气方块（含流体）；再用建造选择工具微调，最后右键控制器导出。
+message.gugu-utils.rangedconstructtool.start=起点：%s, %s, %s
+message.gugu-utils.rangedconstructtool.selected=已选取 %s 个方块，范围 (%s, %s, %s) 到 (%s, %s, %s)
+message.gugu-utils.rangedconstructtool.denied=范围建造选择工具只能在创造模式下、且有命令权限（开启作弊 / OP）时使用。
+message.gugu-utils.rangedconstructtool.toolarge=选区内方块过多（超过 %s 个），选区未改变。

@@ -1,0 +1,118 @@
+package hellfirepvp.modularmachinery.common.integration.crafttweaker;
+
+import github.kasuminova.mmce.compat.ItemStacks;
+
+import github.kasuminova.mmce.compat.crt.CraftTweakerAPI;
+import github.kasuminova.mmce.compat.crt.ZenRegister;
+import minetweaker.api.item.IIngredient;
+import minetweaker.api.item.IItemStack;
+import minetweaker.api.item.IngredientStack;
+import github.kasuminova.mmce.compat.crt.CraftTweakerMC;
+import minetweaker.api.oredict.IOreDictEntry;
+import github.kasuminova.mmce.common.itemtype.ChancedIngredientStack;
+import hellfirepvp.modularmachinery.common.integration.crafttweaker.helper.AdvancedItemCheckerCT;
+import hellfirepvp.modularmachinery.common.integration.crafttweaker.helper.AdvancedItemModifierCT;
+import net.minecraft.item.ItemStack;
+import stanhebben.zenscript.annotations.ZenClass;
+import stanhebben.zenscript.annotations.ZenMethod;
+
+import java.util.ArrayList;
+
+@ZenRegister
+@ZenClass("mods.modularmachinery.IngredientArrayPrimer")
+public class IngredientArrayPrimer {
+    private final ArrayList<ChancedIngredientStack> ingredientStackList = new ArrayList<>();
+    private       ChancedIngredientStack            lastIngredientStack = null;
+
+    @ZenMethod
+    public IngredientArrayPrimer addIngredient(IIngredient input) {
+        if (input instanceof final IItemStack stackCT) {
+            ItemStack stackMC = CraftTweakerMC.getItemStack(input);
+            if (ItemStacks.isEmpty(stackMC)) {
+                CraftTweakerAPI.logError("[ModularMachinery] ItemStack not found/unknown item: " + stackMC);
+                return this;
+            }
+            ChancedIngredientStack ingredientStack = new ChancedIngredientStack(stackMC);
+            if (stackCT.getTag().length() > 0) {
+                ingredientStack.tag = CraftTweakerMC.getNBTCompound(stackCT.getTag());
+            }
+            addIngredient(ingredientStack);
+        } else if (input instanceof IOreDictEntry) {
+            addIngredient(new ChancedIngredientStack(((IOreDictEntry) input).getName(), 1));
+        } else if (input instanceof IngredientStack && input.getInternal() instanceof IOreDictEntry) {
+            addIngredient(new ChancedIngredientStack(
+                ((IOreDictEntry) input.getInternal()).getName(), input.getAmount()));
+        }
+        return this;
+    }
+
+    @ZenMethod
+    public IngredientArrayPrimer addIngredients(IIngredient... inputs) {
+        for (IIngredient input : inputs) {
+            addIngredient(input);
+        }
+        return this;
+    }
+
+    @ZenMethod
+    public IngredientArrayPrimer addChancedIngredient(IIngredient input, float chance) {
+        addIngredient(input);
+        setChance(chance);
+        return this;
+    }
+
+    @ZenMethod
+    public IngredientArrayPrimer setMinMaxAmount(int min, int max) {
+        if (lastIngredientStack != null) {
+            if (min < max) {
+                lastIngredientStack.minCount = min;
+                lastIngredientStack.maxCount = max;
+            } else {
+                CraftTweakerAPI.logWarning("[ModularMachinery] `min` cannot larger than `max`!");
+            }
+        }
+        return this;
+    }
+
+    @ZenMethod
+    public IngredientArrayPrimer setChance(float chance) {
+        if (lastIngredientStack != null) {
+            lastIngredientStack.chance = chance;
+        }
+        return this;
+    }
+
+    @ZenMethod
+    public IngredientArrayPrimer setChecker(AdvancedItemCheckerCT checker) {
+        if (lastIngredientStack != null) {
+            lastIngredientStack.itemChecker = (controller, stack) ->
+                checker.isMatch(controller, CraftTweakerMC.getIItemStack(stack));
+        }
+        return this;
+    }
+
+    @ZenMethod
+    public IngredientArrayPrimer addItemModifier(AdvancedItemModifierCT modifier) {
+        if (lastIngredientStack != null) {
+            lastIngredientStack.itemModifierList.add((controller, stack) -> CraftTweakerMC.getItemStack(
+                modifier.apply(controller, CraftTweakerMC.getIItemStackMutable(stack))));
+        }
+        return this;
+    }
+
+    @ZenMethod
+    @Deprecated
+    public IngredientArrayPrimer build() {
+        CraftTweakerAPI.logWarning("[ModularMachinery] IngredientArrayPrimer#build is deprecated, it will be removed in future version.");
+        return this;
+    }
+
+    public ArrayList<ChancedIngredientStack> getIngredientStackList() {
+        return ingredientStackList;
+    }
+
+    private void addIngredient(ChancedIngredientStack input) {
+        ingredientStackList.add(input);
+        lastIngredientStack = input;
+    }
+}

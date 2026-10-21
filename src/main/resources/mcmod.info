@@ -1,0 +1,38 @@
+{
+  "modListVersion": 2,
+  "modList": [{
+    "modid": "${modId}",
+    "name": "${modName}",
+    "description": "A modpack-maker toolset to create custom, massive, unique and complex machines and recipes from scratch with JSON.\n\nUnofficial port of Modular Machinery: Community Edition to Minecraft 1.7.10.",
+    "version": "${modVersion}",
+    "mcversion": "${minecraftVersion}",
+    "url": "https://github.com/KasumiNova/ModularMachinery-Community-Edition",
+    "updateUrl": "",
+    "authorList": ["HellFirePvP", "wiiv", "KasumiNova", "youyihj", "ikexing", "yby02/2zd", "kupa"],
+    "credits": "HellFirePvP code, wiiv ALL THE TEXTURES :3, and KasumiNova Improvements! And more community edition contributors! Ported to 1.7.10 by yby02/2zd and kupa.",
+    "logoFile": "/logo.png",
+    "screenshots": [],
+    "parent": "",
+    "requiredMods": ["gtnhlib", "MineTweaker3"],
+    "dependencies": [],
+    "dependants": [],
+    "useDependencyInformation": false
+  }, {
+    "modid": "gugu-utils",
+    "name": "GuGu Utils (MMCE 1.7.10 subset)",
+    "description": "Environment Sensor (gugu-utils:environmenthatch) and Ranged Construction Selection Tool (gugu-utils:constructionranged), ported from GuGu Utils 0.8.4 for Minecraft 1.12.2 and bundled with this port of Modular Machinery: Community Edition.\n\nGuGu Utils is MIT licensed, Copyright (c) 2020 ParaParty (see LICENSE-gugu-utils.txt).",
+    "version": "0.8.4-mmce-${modVersion}",
+    "mcversion": "${minecraftVersion}",
+    "url": "https://github.com/ParaParty/gugu-utils",
+    "updateUrl": "",
+    "authorList": ["WarmthDawn", "yuedu233_", "Month_Hare"],
+    "credits": "Original GuGu Utils by WarmthDawn, yuedu233_, Month_Hare (ParaParty, MIT License).",
+    "logoFile": "",
+    "screenshots": [],
+    "parent": "",
+    "requiredMods": ["${modId}"],
+    "dependencies": ["${modId}"],
+    "dependants": [],
+    "useDependencyInformation": false
+  }]
+}

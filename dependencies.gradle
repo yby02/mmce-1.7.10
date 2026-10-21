@@ -1,0 +1,111 @@
+/*
+ * 依赖分为三类（详见 MIGRATION_PLAN.md 第 3 节）：
+ *  - 必需：GTNHLib、CraftTweaker(MineTweaker3, GTNH)
+ *  - 可选（软依赖，编译期可见，运行时用 Loader.isModLoaded / @Optional 门控）：NEI、Waila、Mekanism API ...
+ *  - 仅开发期测试（runClient/runServer 中加载，不发布为依赖）：EnderIO、Mekanism CE 本体、ForgeMultipart ...
+ */
+dependencies {
+    // ---- 必需 ----
+    api("com.github.GTNewHorizons:GTNHLib:0.11.54:dev")
+    api("com.github.GTNewHorizons:CraftTweaker:3.4.8:dev") { transitive = false }
+
+    // ---- 编译期注解（运行时不需要） ----
+    compileOnly("org.jetbrains:annotations:26.0.1")
+
+    // ---- 可选 ----
+    // RF 能量 API（CoFHLib 内含 cofh.api.energy）；运行时由安装了 RF API 的模组提供，代码中用 @Optional 软依赖
+    compileOnly(rfg.deobf("curse.maven:cofh-lib-220333:2388748"))
+    // IC2 EU 能量 API；同样以 @Optional 软依赖
+    compileOnly("net.industrial-craft:industrialcraft-2:2.2.828-experimental:dev") { transitive = false }
+    devOnlyNonPublishable("com.github.GTNewHorizons:NotEnoughItems:2.8.162-GTNH:dev")
+    devOnlyNonPublishable("com.github.GTNewHorizons:waila:1.19.34:dev") { transitive = false }
+    // Mekanism CE 的发布包使用 SRG 名，需经 RFG 反混淆后才能在开发环境使用
+    compileOnly(rfg.deobf("mekanism-ce:Mekanism-Community-Edition:9.10.51:API"))
+
+    // ---- 仅开发期测试 ----
+    // Mekanism CE 1.7.10 全模块包（Mekanism / Generators / Tools / DefenseTech / Ultimate）。
+    // 注意：官方 DEV.jar 实际仍是 SRG 名，直接放进开发环境会 NoSuchMethodError，因此统一用 ALL.jar + rfg.deobf。
+    runtimeOnlyNonPublishable(rfg.deobf("mekanism-ce:Mekanism-Community-Edition:9.10.51:ALL"))
+    // Mekanism 1.7.10 的电缆/管道是 FMP 部件
+    runtimeOnlyNonPublishable("com.github.GTNewHorizons:ForgeMultipart:1.7.18:dev") { transitive = false }
+    // EnderIO（GTNH）及其硬依赖
+    runtimeOnlyNonPublishable("com.github.GTNewHorizons:EnderIO:2.10.49:dev") { transitive = false }
+    runtimeOnlyNonPublishable("com.github.GTNewHorizons:EnderCore:0.5.15:dev") { transitive = false }
+    runtimeOnlyNonPublishable(rfg.deobf("curse.maven:cofh-lib-220333:2388748"))
+    // IC2 experimental：只放进开发运行环境，用于实测 EU 输入 / 输出（计划 7.2 节 E5）；发布版仍是软依赖
+    runtimeOnlyNonPublishable("net.industrial-craft:industrialcraft-2:2.2.828-experimental:dev") { transitive = false }
+
+    // ---- AE2（GTNH rv3）：ME 总线 / 样板供应器（软依赖） ----
+    compileOnly("com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-1089-GTNH:dev") { transitive = false }
+    runtimeOnlyNonPublishable("com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-1089-GTNH:dev") { transitive = false }
+    // AE2FC：样板供应器把 AE2FC 的流体滴（ItemFluidDrop / ItemFluidPacket）换成流体（软依赖）；开发环境中另用于流体存储元件
+    compileOnly("com.github.GTNewHorizons:AE2FluidCraft-Rework:1.5.115-gtnh:dev") { transitive = false }
+    runtimeOnlyNonPublishable("com.github.GTNewHorizons:AE2FluidCraft-Rework:1.5.115-gtnh:dev") { transitive = false }
+
+    // ---- GregTech 5（GTNH GT5-Unofficial）：能量仓直接收发 GT EU（IEnergyConnected，软依赖） ----
+    compileOnly("com.github.GTNewHorizons:GT5-Unofficial:5.09.54.238:dev") { transitive = false }
+
+    // ---- Modular Magic 的 1.7.10 子集（软依赖）：神秘时代 4 源质、植物魔法魔力、血魔法 1 生命精华 ----
+    compileOnly(rfg.deobf("curse.maven:thaumcraft-223628:2227552")) { transitive = false }
+    compileOnly("com.github.GTNewHorizons:Botania:1.13.39-GTNH:dev") { transitive = false }
+    compileOnly("com.github.GTNewHorizons:BloodMagic:1.9.14:dev") { transitive = false }
+    // 开发环境中实测（-PmmceMagic=true）；神秘时代 4 与植物魔法需要 Baubles（GTNH 的 Baubles-Expanded 提供）
+    if (project.findProperty("mmceMagic") == "true") {
+        runtimeOnlyNonPublishable(rfg.deobf("curse.maven:thaumcraft-223628:2227552")) { transitive = false }
+        runtimeOnlyNonPublishable("com.github.GTNewHorizons:Botania:1.13.39-GTNH:dev") { transitive = false }
+        runtimeOnlyNonPublishable("com.github.GTNewHorizons:BloodMagic:1.9.14:dev") { transitive = false }
+        runtimeOnlyNonPublishable("com.github.GTNewHorizons:Baubles-Expanded:2.2.25-GTNH:dev") { transitive = false }
+    }
+
+    // ---- 与其他模组对接的实测（只放进开发运行环境，按需用 Gradle 属性打开，见 scripts/server-smoke-test.sh） ----
+    // BuildCraft 7.1（GTNH）：引擎、能量 / 流体管道、储罐（-PmmceBC=true）
+    if (project.findProperty("mmceBC") == "true") {
+        runtimeOnlyNonPublishable("com.github.GTNewHorizons:BuildCraft:7.1.64:dev") { transitive = false }
+    }
+    // GregTech 5（GTNH GT5-Unofficial，-PmmceGT=true）：连同它的运行依赖（StructureLib、ModularUI、Hodgepodge、EndlessIDs 等）一起放进开发环境；
+    // EndlessIDs 会改写存档格式，scripts/server-smoke-test.sh 的 WITH_GT=1 使用单独的存档 gt-world
+    if (project.findProperty("mmceGT") == "true") {
+        runtimeOnlyNonPublishable("com.github.GTNewHorizons:GT5-Unofficial:5.09.54.238:dev")
+    }
+    // Railcraft 9.17（GTNH）：蒸汽引擎、储罐（-PmmceRailcraft=true；Thaumcraft / Baubles 对它是可选依赖）
+    if (project.findProperty("mmceRailcraft") == "true") {
+        runtimeOnlyNonPublishable("com.github.GTNewHorizons:Railcraft:9.17.34:dev") { transitive = false }
+    }
+    // Extra Utilities 1.2.12：发电机、流体传输节点 / 管道、桶（-PmmceExU=true）
+    if (project.findProperty("mmceExU") == "true") {
+        runtimeOnlyNonPublishable(rfg.deobf("curse.maven:extra-utilities-225561:2264383"))
+    }
+
+    // ---- 配方适配器（软依赖，编译期可见；开发环境中实测） ----
+    // 匠魂（GTNH）：冶炼炉熔化 / 合金配方适配器；运行时需要 Mantle
+    compileOnly("com.github.GTNewHorizons:TinkersConstruct:1.14.119-GTNH:dev") { transitive = false }
+    runtimeOnlyNonPublishable("com.github.GTNewHorizons:TinkersConstruct:1.14.119-GTNH:dev") { transitive = false }
+    compileOnly("com.github.GTNewHorizons:Mantle:0.5.4:dev") { transitive = false }
+    runtimeOnlyNonPublishable("com.github.GTNewHorizons:Mantle:0.5.4:dev") { transitive = false }
+
+    // 热力膨胀 4（1.7.10 最后版本 4.1.5）：灵魂嫁接器（Insolator）配方适配器；运行时需要 CoFHCore 3.1.4 与热力基础 1.2.6。
+    // CoFHCore 的访问转换器（SRG 名）在 MCP 名的开发环境中不生效，需要另外应用到开发用的 Minecraft（见 addon.gradle），
+    // 因此这三个模组只在加 -PmmceCoFH=true 时放进开发运行环境（scripts/server-smoke-test.sh 用 WITH_COFH=1）
+    compileOnly(rfg.deobf("curse.maven:thermal-expansion-69163:2388758"))
+    if (project.findProperty("mmceCoFH") == "true") {
+        runtimeOnlyNonPublishable(rfg.deobf("curse.maven:thermal-expansion-69163:2388758"))
+        runtimeOnlyNonPublishable(rfg.deobf("curse.maven:thermal-foundation-222880:2388752"))
+        runtimeOnlyNonPublishable(rfg.deobf("curse.maven:cofh-core-69162:2388751"))
+    }
+
+    // ---- Angelica（渲染替换 / 光影）兼容 ----
+    // 编译期只用到 com.gtnewhorizons.angelica.api.ThreadSafeISBRH 注解；运行时缺少注解类时注解被忽略，不构成硬依赖。
+    compileOnly("com.github.GTNewHorizons:Angelica:2.2.35:dev") { transitive = false }
+    // Angelica 会替换整条渲染管线，默认不放进 runClient；需要实测时加 -PmmceAngelica=true（scripts/client-autotest.sh 用 WITH_ANGELICA=1）
+    // （Angelica 需要的 UniMixins 已由 GTNHLib 传递引入）
+    if (project.findProperty("mmceAngelica") == "true") {
+        runtimeOnlyNonPublishable("com.github.GTNewHorizons:Angelica:2.2.35:dev")
+    }
+
+    // ---- 单元测试（纯逻辑：compat 几何/旋转、NBT JSON、物品处理器） ----
+    testImplementation(platform("org.junit:junit-bom:5.10.2"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    // 单元测试不经过 Forge 启动器，GTNHLib 在游戏中提供的 fastutil 需显式加入测试运行时（与编译期版本一致）
+    testRuntimeOnly("it.unimi.dsi:fastutil:8.5.18")
+}

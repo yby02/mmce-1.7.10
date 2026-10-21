@@ -1,0 +1,34 @@
+/*******************************************************************************
+ * HellFirePvP / Modular Machinery 2019
+ *
+ * This project is licensed under GNU GENERAL PUBLIC LICENSE Version 3.
+ * The source code is available on github: https://github.com/HellFirePvP/ModularMachinery
+ * For further details, see the License file there.
+ ******************************************************************************/
+
+package hellfirepvp.modularmachinery.common.crafting.requirement.type;
+
+import com.google.gson.JsonObject;
+import hellfirepvp.modularmachinery.common.crafting.helper.ComponentRequirement;
+import hellfirepvp.modularmachinery.common.machine.IOType;
+import github.kasuminova.mmce.compat.registry.RegistryEntryImpl;
+
+import javax.annotation.Nullable;
+
+/**
+ * This class is part of the Modular Machinery Mod
+ * The complete source code for this mod can be found on github.
+ * Class: RequirementType
+ * Created by HellFirePvP
+ * Date: 13.07.2019 / 10:38
+ */
+public abstract class RequirementType<T, V extends ComponentRequirement<T, ? extends RequirementType<T, V>>> extends RegistryEntryImpl<RequirementType<?, ?>> {
+
+    public abstract ComponentRequirement<T, ? extends RequirementType<T, V>> createRequirement(IOType type, JsonObject jsonObject);
+
+    @Nullable
+    public String requiresModid() {
+        return null;
+    }
+
+}

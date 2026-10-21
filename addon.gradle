@@ -1,0 +1,38 @@
+// 移植期间一次性看到全部编译错误，便于批量修复
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += ['-Xmaxerrs', '5000', '-Xmaxwarns', '0']
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        exceptionFormat 'full'
+    }
+}
+
+// 仅开发环境：CoFHCore 自带的访问转换器 CoFH_at.cfg 使用 SRG 名，由它的核心模组在运行时应用，在 MCP 名的开发环境中不生效
+// （装有 CoFHCore 时，实体移动时 cofh.asmhooks.HooksCore 访问 World.collidingBoundingBoxes 抛 IllegalAccessError）。
+// 这里从 CoFHCore 的 jar 中取出该文件，交给 RFG 在反混淆到 SRG 名时应用到开发用的 Minecraft；不影响发布 jar。
+// 始终应用（CoFHCore 等模组本身仍只在 -PmmceCoFH=true 时加入运行环境）：RFG 的 MCP 重映射步骤按自身的输入哈希缓存，
+// 切换 AT 后不会自动重建，已有 build/rfg 时需删除 build/rfg/mcp_patched_minecraft-sources.jar*。
+// MMCE 自身代码不使用这些被放宽访问的字段（scripts 中的检查见 TEST_LOG）。
+configurations {
+    devCoFHAt {
+        canBeConsumed = false
+        transitive = false
+    }
+}
+dependencies {
+    devCoFHAt("curse.maven:cofh-core-69162:2388751")
+}
+def extractCoFHAt = tasks.register("extractCoFHAt", Copy) {
+    from({ zipTree(configurations.devCoFHAt.singleFile) }) {
+        include "CoFH_at.cfg"
+    }
+    into(layout.buildDirectory.dir("dev-at"))
+}
+tasks.named("deobfuscateMergedJarToSrg").configure {
+    dependsOn(extractCoFHAt)
+    accessTransformerFiles.from(layout.buildDirectory.file("dev-at/CoFH_at.cfg"))
+}

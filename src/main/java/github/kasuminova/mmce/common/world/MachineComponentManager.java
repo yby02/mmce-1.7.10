@@ -1,0 +1,123 @@
+package github.kasuminova.mmce.common.world;
+
+import github.kasuminova.mmce.compat.Worlds;
+
+import com.github.bsideup.jabel.Desugar;
+import github.kasuminova.mmce.common.util.concurrent.ExecuteGroup;
+import hellfirepvp.modularmachinery.common.tiles.base.TileMultiblockMachineController;
+import it.unimi.dsi.fastutil.objects.ObjectArraySet;
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ReferenceSets;
+import net.minecraft.tileentity.TileEntity;
+import github.kasuminova.mmce.compat.BlockPos;
+import net.minecraft.world.World;
+
+import java.util.Collections;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+public class MachineComponentManager {
+    public static final MachineComponentManager                  INSTANCE     = new MachineComponentManager();
+    private final       Map<World, Map<BlockPos, ComponentInfo>> componentMap = new ConcurrentHashMap<>();
+
+    private MachineComponentManager() {
+    }
+
+    // 1.7.10 移植：ME 样板镜像（MEPatternMirrorImage）归并到样板供应器位置的逻辑随 AE2 部件在 P5 恢复
+
+    public void addWorld(World world) {
+        componentMap.put(world, new ConcurrentHashMap<>());
+    }
+
+    public void removeWorld(World world) {
+        Map<BlockPos, ComponentInfo> removed = componentMap.remove(world);
+        if (removed == null) {
+            return;
+        }
+        for (final ComponentInfo info : removed.values()) {
+            info.owners.clear();
+        }
+        removed.clear();
+    }
+
+    public void checkComponentShared(TileEntity component, TileMultiblockMachineController ctrl) {
+        World world = component.getWorldObj();
+        TileEntity te = component;
+        BlockPos pos = Worlds.getPos(component);
+
+        Map<BlockPos, ComponentInfo> posComponentMap = componentMap.computeIfAbsent(world, v -> new ConcurrentHashMap<>());
+
+        synchronized (te) {
+            ComponentInfo info = posComponentMap.computeIfAbsent(pos, v -> new ComponentInfo(
+                    te, pos, ReferenceSets.synchronize(new ReferenceOpenHashSet<>(Collections.singleton(ctrl)))));
+
+            if (!info.areTileEntityEquals(te)) {
+                ComponentInfo newInfo = new ComponentInfo(te, pos, ReferenceSets.synchronize(new ReferenceOpenHashSet<>(Collections.singleton(ctrl))));
+                posComponentMap.put(pos, newInfo);
+                return;
+            }
+
+            Set<TileMultiblockMachineController> owners = info.owners;
+            if (owners.contains(ctrl)) {
+                return;
+            }
+            owners.add(ctrl);
+            if (owners.size() <= 1) {
+                return;
+            }
+
+            long groupId = owners.stream()
+                    .filter(owner -> owner.getExecuteGroupId() != -1)
+                    .findFirst()
+                    .map(TileMultiblockMachineController::getExecuteGroupId)
+                    .orElse(ExecuteGroup.newGroupId());
+
+            owners.forEach(owner -> owner.setExecuteGroupId(groupId));
+        }
+    }
+
+    public void removeOwner(TileEntity component, TileMultiblockMachineController ctrl) {
+        World world = component.getWorldObj();
+        TileEntity te = component;
+        BlockPos pos = Worlds.getPos(component);
+
+        Map<BlockPos, ComponentInfo> posComponentMap = componentMap.computeIfAbsent(world, v -> new ConcurrentHashMap<>());
+
+        ComponentInfo info = posComponentMap.get(pos);
+        if (info == null) {
+            return;
+        }
+
+        if (!info.areTileEntityEquals(te)) {
+            ComponentInfo newInfo = new ComponentInfo(te, pos, new ObjectArraySet<>());
+            posComponentMap.put(pos, newInfo);
+        } else {
+            Set<TileMultiblockMachineController> owners = info.owners;
+            synchronized (owners) {
+                owners.remove(ctrl);
+            }
+        }
+    }
+
+    @Desugar
+    public record ComponentInfo(TileEntity te, BlockPos pos, Set<TileMultiblockMachineController> owners) {
+
+        public boolean areTileEntityEquals(TileEntity te) {
+            return this.te == te;
+        }
+
+        @Override
+        public int hashCode() {
+            return pos.hashCode();
+        }
+
+        @Override
+        public boolean equals(final Object obj) {
+            if (obj instanceof ComponentInfo componentInfo) {
+                return pos.equals(componentInfo.pos);
+            }
+            return false;
+        }
+    }
+}
