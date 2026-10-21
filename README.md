@@ -11,7 +11,7 @@ mmce1.7.10 非官方移植版。
 | [GTNHLib](https://github.com/GTNewHorizons/GTNHLib) | ≥ 0.11.54 | 是 |
 | [CraftTweaker](https://github.com/GTNewHorizons/CraftTweaker)（modid `MineTweaker3`） | 3.3.1 | 是 |
 
-NEI、Waila、Mekanism、AE2、GregTech 5、IC2、匠魂、热力膨胀、神秘时代 4、植物魔法、血魔法均为软依赖，不装也能启动。
+
 
 ## 文档
 
