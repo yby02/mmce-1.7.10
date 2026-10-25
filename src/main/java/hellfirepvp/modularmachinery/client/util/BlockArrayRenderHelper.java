@@ -22,15 +22,18 @@ import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.init.Blocks;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.MathHelper;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.biome.BiomeGenBase;
 import net.minecraftforge.client.ForgeHooksClient;
 import net.minecraftforge.common.util.ForgeDirection;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.util.glu.GLU;
 
 import javax.annotation.Nullable;
 import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -60,6 +63,14 @@ public class BlockArrayRenderHelper {
     private final BlockArray                  blocks;
     private final WorldBlockArrayRenderAccess renderAccess;
     long sampleSnap = -1;
+    /** 最近一次带拾取参数的渲染所命中的方块。 */
+    @Nullable
+    private BlockPos pickedBlock;
+    /** 只打印一次深度实测值，便于定位“深度不可读”。 */
+    private static final java.util.concurrent.atomic.AtomicBoolean pickingDiagnosed =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+    private static final java.util.concurrent.atomic.AtomicBoolean depthDiagnosed =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
 
     BlockArrayRenderHelper(BlockArray blocks, int machineColor) {
         this.blocks = blocks;
@@ -79,6 +90,17 @@ public class BlockArrayRenderHelper {
      * yaw / pitch 为角度；zoom 为相对“刚好放下整个结构”的缩放倍数。
      */
     public void render3DGUI(int x, int y, int width, int height, float yaw, float pitch, float zoom, @Nullable Integer slice) {
+        render3DGUI(x, y, width, height, yaw, pitch, zoom, slice, -1, -1);
+    }
+
+    /**
+     * 同 {@link #render3DGUI(int, int, int, int, float, float, float, Integer)}，并在画完后用
+     * <b>深度缓冲 + 真实 GL 矩阵反投影</b> 拾取 (pickX, pickY) 处的方块（与上游 WorldSceneRenderer 的做法一致）。
+     * 结果可通过 {@link #getPickedBlock()} 取得；pickX &lt; 0 表示不拾取。
+     */
+    public void render3DGUI(int x, int y, int width, int height, float yaw, float pitch, float zoom,
+                            @Nullable Integer slice, int pickX, int pickY) {
+        pickedBlock = null;
         Minecraft mc = Minecraft.getMinecraft();
         FloatBuffer matrix = BufferUtils.createFloatBuffer(16);
         GL11.glGetFloat(GL11.GL_MODELVIEW_MATRIX, matrix);
@@ -154,9 +176,99 @@ public class BlockArrayRenderHelper {
             ForgeHooksClient.setRenderPass(-1);
         }
         GL11.glDepthMask(true);
+        if (pickX >= 0 && pickY >= 0) {
+            // 此刻深度缓冲仍是本次绘制的内容、矩阵也仍是本次的变换，正是反投影的时机
+            pickedBlock = pickAt(pickX, pickY, slice);
+        }
         GL11.glPopMatrix();
         GL11.glPopAttrib();
         GL11.glColor4f(1F, 1F, 1F, 1F);
+    }
+
+    /** 最近一次带拾取参数的渲染所命中的方块；未命中为 null。 */
+    public BlockPos getPickedBlock() {
+        return pickedBlock;
+    }
+
+    /**
+     * 读取鼠标像素处的深度值，用当前的 MODELVIEW / PROJECTION / VIEWPORT 反投影成结构坐标，
+     * 再取整得到方块坐标。与上游 {@code WorldSceneRenderer#unProject} 是同一思路，
+     * 因此不依赖对相机变换的手工推导，正交 / 透视都成立。
+     */
+    private BlockPos pickAt(int pickX, int pickY, @Nullable Integer slice) {
+        Minecraft mc = Minecraft.getMinecraft();
+        ScaledResolution res = new ScaledResolution(mc, mc.displayWidth, mc.displayHeight);
+        int scale = res.getScaleFactor();
+        int px = pickX * scale;
+        int py = mc.displayHeight - pickY * scale - 1;
+        if (px < 0 || py < 0 || px >= mc.displayWidth || py >= mc.displayHeight) {
+            return null;
+        }
+
+        FloatBuffer modelView = BufferUtils.createFloatBuffer(16);
+        FloatBuffer projection = BufferUtils.createFloatBuffer(16);
+        IntBuffer viewport = BufferUtils.createIntBuffer(16);
+        GL11.glGetFloat(GL11.GL_MODELVIEW_MATRIX, modelView);
+        GL11.glGetFloat(GL11.GL_PROJECTION_MATRIX, projection);
+        GL11.glGetInteger(GL11.GL_VIEWPORT, viewport);
+
+        // 不读深度缓冲：OptiFine / Angelica 的 GUI 帧缓冲里 glReadPixels(GL_DEPTH_COMPONENT) 恒为 0.5
+        //（实测日志：preview picking depth read = 0.50000006），完全不可用。
+        // 改为取射线两个深度端点，用 gluProject 投回屏幕比较 NDC z —— 越小越靠近相机。
+        double[] depthZero = unproject(px, py, 0F, modelView, projection, viewport);
+        double[] depthOne = unproject(px, py, 1F, modelView, projection, viewport);
+        if (depthZero == null || depthOne == null) {
+            return null;
+        }
+
+        FloatBuffer projected = BufferUtils.createFloatBuffer(3);
+        double ndcZ0 = projectNdcZ(depthZero, modelView, projection, viewport, projected);
+        double ndcZ1 = projectNdcZ(depthOne, modelView, projection, viewport, projected);
+
+        // 实测：按 NDC z 选出的一端会落在结构背面（总是选到最后一个方块），因此这里取反。
+        // 同时打一条日志，把两端的世界坐标与最终命中块记录下来，便于用实测值确认。
+        double[] cameraEnd = depthZero;
+        double[] otherEnd = depthOne;
+        BlockPos picked = PreviewRayPicker.pickFromCamera(blocks.getPattern(), cameraEnd, otherEnd, slice);
+        if (pickingDiagnosed.compareAndSet(false, true)) {
+            hellfirepvp.modularmachinery.ModularMachinery.log.info(
+                "[ModularMachinery] preview picking: ndcZ0={} ndcZ1={} e0={},{},{} e1={},{},{} -> {}",
+                ndcZ0, ndcZ1,
+                depthZero[0], depthZero[1], depthZero[2],
+                depthOne[0], depthOne[1], depthOne[2],
+                picked);
+        }
+        return picked;
+    }
+
+    /** gluProject 后取 NDC z；失败返回 NaN。 */
+    private static double projectNdcZ(double[] point, FloatBuffer modelView, FloatBuffer projection,
+                                      IntBuffer viewport, FloatBuffer out) {
+        modelView.rewind();
+        projection.rewind();
+        viewport.rewind();
+        if (!GLU.gluProject((float) point[0], (float) point[1], (float) point[2],
+            modelView, projection, viewport, out)) {
+            return Double.NaN;
+        }
+        out.rewind();
+        out.get();
+        out.get();
+        return out.get();
+    }
+
+    /** gluUnProject 包装；失败返回 null。 */
+    private static double[] unproject(int px, int py, float depth, FloatBuffer modelView,
+                                      FloatBuffer projection, IntBuffer viewport) {
+        FloatBuffer out = BufferUtils.createFloatBuffer(3);
+        modelView.rewind();
+        projection.rewind();
+        viewport.rewind();
+        if (!GLU.gluUnProject(px, py, depth, modelView, projection, viewport, out)) {
+            return null;
+        }
+        out.rewind();
+        return new double[] { out.get(), out.get(), out.get() };
     }
 
     /**

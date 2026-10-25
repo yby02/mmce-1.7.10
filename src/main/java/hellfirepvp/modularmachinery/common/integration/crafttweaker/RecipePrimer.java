@@ -55,7 +55,6 @@ import hellfirepvp.modularmachinery.common.machine.MachineRegistry;
 import hellfirepvp.modularmachinery.common.modifier.RecipeModifier;
 import hellfirepvp.modularmachinery.common.util.SmartInterfaceType;
 import github.kasuminova.mmce.common.integration.mekanism.MekanismZenSupport;
-import github.kasuminova.mmce.common.integration.mekanism.ZenGasStack;
 import mekanism.api.gas.Gas;
 import mekanism.api.gas.GasRegistry;
 import mekanism.api.gas.GasStack;
@@ -83,8 +82,10 @@ import java.util.Map;
 @ZenRegister
 @ZenClass("mods.modularmachinery.RecipePrimer")
 /*
- * 1.7.10 移植：Mekanism 气体方法——上游以 Mekanism 的 CraftTweaker 类型 IGasStack（<gas:...>）为参数，1.7.10 的 Mekanism 没有
- * MineTweaker 集成，因此改为“气体注册名 + 数量”：addGasInput / addGasOutput / addGasPerTickInput / addGasPerTickOutput(String, int)。
+ * 1.7.10 移植：Mekanism 气体方法。
+ * - “气体注册名 + 数量”写法：addGasInput / addGasOutput / addGasPerTickInput / addGasPerTickOutput(String, int)，始终可用。
+ * - <gas:...> 写法：1.7.10 的气体 ZenScript 类型由 ModTweaker2 提供（mods.mekanism.gas.IGasStack）。MMCE 不再自行注册同名
+ *   ZenClass 与尖括号（会与 ModTweaker 冲突），而是按鸭子类型读取气体对象的 name / amount，因此 <gas:x> * n 可直接传入。
  * 这些方法以 @Optional.Method 软依赖 Mekanism，未装 Mekanism 时被剥离，调用它们的脚本文件会编译失败（其他脚本文件不受影响）。
  */
 public class RecipePrimer implements PreparedRecipe {
@@ -590,18 +591,34 @@ public class RecipePrimer implements PreparedRecipe {
         return this;
     }
 
-    // 与上游相同的 <gas:...>（IGasStack）写法，含复数形式；addInput / addOutput 也会识别气体
+    // 与上游相同的 <gas:...> 写法，含复数形式；addInput / addOutput 也会识别气体。
+    // 气体对象由 ModTweaker2 提供（mods.mekanism.gas.IGasStack），这里按鸭子类型读取 name / amount，不绑定具体实现类。
 
-    @ZenMethod
-    @Optional.Method(modid = "Mekanism")
-    public RecipePrimer addGasInput(ZenGasStack gas) {
-        return isNullArgument(gas, "addGasInput") ? this : addGasInput(gas.getName(), gas.getAmount());
+    private RecipePrimer addGasFromIngredient(IIngredient gas, IOType ioType, boolean perTick, String method) {
+        if (isNullArgument(gas, method)) {
+            return this;
+        }
+        String name = MekanismZenSupport.gasName(gas);
+        if (name == null) {
+            CraftTweakerAPI.logError(String.format(
+                "[ModularMachinery] %s: %s 不是 Mekanism 气体对象（缺少 name / amount）。需要 ModTweaker2 提供的 <gas:...>，或改用 \"气体名\", 数量 的写法。",
+                method, gas));
+            return this;
+        }
+        requireGas(ioType, name, MekanismZenSupport.gasAmount(gas), perTick);
+        return this;
     }
 
     @ZenMethod
     @Optional.Method(modid = "Mekanism")
-    public RecipePrimer addGasInputs(ZenGasStack... gases) {
-        for (ZenGasStack gas : gases) {
+    public RecipePrimer addGasInput(IIngredient gas) {
+        return addGasFromIngredient(gas, IOType.INPUT, false, "addGasInput");
+    }
+
+    @ZenMethod
+    @Optional.Method(modid = "Mekanism")
+    public RecipePrimer addGasInputs(IIngredient... gases) {
+        for (IIngredient gas : gases) {
             addGasInput(gas);
         }
         return this;
@@ -609,14 +626,14 @@ public class RecipePrimer implements PreparedRecipe {
 
     @ZenMethod
     @Optional.Method(modid = "Mekanism")
-    public RecipePrimer addGasOutput(ZenGasStack gas) {
-        return isNullArgument(gas, "addGasOutput") ? this : addGasOutput(gas.getName(), gas.getAmount());
+    public RecipePrimer addGasOutput(IIngredient gas) {
+        return addGasFromIngredient(gas, IOType.OUTPUT, false, "addGasOutput");
     }
 
     @ZenMethod
     @Optional.Method(modid = "Mekanism")
-    public RecipePrimer addGasOutputs(ZenGasStack... gases) {
-        for (ZenGasStack gas : gases) {
+    public RecipePrimer addGasOutputs(IIngredient... gases) {
+        for (IIngredient gas : gases) {
             addGasOutput(gas);
         }
         return this;
@@ -624,14 +641,14 @@ public class RecipePrimer implements PreparedRecipe {
 
     @ZenMethod
     @Optional.Method(modid = "Mekanism")
-    public RecipePrimer addGasPerTickInput(ZenGasStack gas) {
-        return isNullArgument(gas, "addGasPerTickInput") ? this : addGasPerTickInput(gas.getName(), gas.getAmount());
+    public RecipePrimer addGasPerTickInput(IIngredient gas) {
+        return addGasFromIngredient(gas, IOType.INPUT, true, "addGasPerTickInput");
     }
 
     @ZenMethod
     @Optional.Method(modid = "Mekanism")
-    public RecipePrimer addGasPerTickInputs(ZenGasStack... gases) {
-        for (ZenGasStack gas : gases) {
+    public RecipePrimer addGasPerTickInputs(IIngredient... gases) {
+        for (IIngredient gas : gases) {
             addGasPerTickInput(gas);
         }
         return this;
@@ -639,14 +656,14 @@ public class RecipePrimer implements PreparedRecipe {
 
     @ZenMethod
     @Optional.Method(modid = "Mekanism")
-    public RecipePrimer addGasPerTickOutput(ZenGasStack gas) {
-        return isNullArgument(gas, "addGasPerTickOutput") ? this : addGasPerTickOutput(gas.getName(), gas.getAmount());
+    public RecipePrimer addGasPerTickOutput(IIngredient gas) {
+        return addGasFromIngredient(gas, IOType.OUTPUT, true, "addGasPerTickOutput");
     }
 
     @ZenMethod
     @Optional.Method(modid = "Mekanism")
-    public RecipePrimer addGasPerTickOutputs(ZenGasStack... gases) {
-        for (ZenGasStack gas : gases) {
+    public RecipePrimer addGasPerTickOutputs(IIngredient... gases) {
+        for (IIngredient gas : gases) {
             addGasPerTickOutput(gas);
         }
         return this;

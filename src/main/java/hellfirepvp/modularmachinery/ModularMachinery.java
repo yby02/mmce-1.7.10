@@ -108,10 +108,6 @@ public class ModularMachinery {
 
         CommonProxy.loadModData(event.getModConfigurationDirectory());
         ZenRegistration.registerAll(event.getAsmData());
-        if (hellfirepvp.modularmachinery.common.base.Mods.MEKANISM.isPresent()) {
-            // <gas:...> 尖括号（1.7.10 的 Mekanism 没有 MineTweaker 集成）
-            github.kasuminova.mmce.common.integration.mekanism.MekanismZenSupport.registerBracketHandler();
-        }
         proxy.preInit();
     }
 
