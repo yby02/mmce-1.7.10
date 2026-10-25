@@ -13,6 +13,7 @@ import hellfirepvp.modularmachinery.client.util.BlockArrayPreviewRenderHelper;
 import hellfirepvp.modularmachinery.client.util.BlockArrayRenderHelper;
 import hellfirepvp.modularmachinery.client.util.DynamicMachineRenderContext;
 import hellfirepvp.modularmachinery.client.util.PreviewRayPicker;
+import hellfirepvp.modularmachinery.client.util.StructureIngredientMerger;
 import hellfirepvp.modularmachinery.common.block.BlockController;
 import hellfirepvp.modularmachinery.common.block.BlockFactoryController;
 import hellfirepvp.modularmachinery.common.item.ItemBlueprint;
@@ -286,13 +287,13 @@ public class StructurePreviewHandler extends TemplateRecipeHandler {
             ItemStack controller = controllerItem(machine);
             this.controllerStack = controller == null ? null : new PositionedStack(controller, WIDTH - 17, 114, false);
 
-            List<List<ItemStack>> ingredients = context.getStructurePattern().getIngredientList();
-            // 把“可接受方块组相同”的位置合并成一个条目，数量作为堆叠数显示：
-            // 例如 9 个都接受任意尺寸输入仓的位置，显示为 1 格、数量 9，轮换时整组一起换。
-            Map<String, List<ItemStack>> groupedAlternatives = new java.util.LinkedHashMap<>();
-            Map<String, Integer> groupedCounts = new java.util.LinkedHashMap<>();
+            // getIngredientList() 已合并“单一选择”的位置（数量在 stackSize 里），
+            // 这里再按“可接受组合”合并多选择的位置，避免同一组方块占满整个列表。
+            List<List<ItemStack>> ingredients = StructureIngredientMerger.merge(
+                context.getStructurePattern().getIngredientList());
+            int index = 0;
             for (List<ItemStack> alternatives : ingredients) {
-                List<ItemStack> copies = new ArrayList<>();
+                List<ItemStack> copies = new ArrayList<>(alternatives.size());
                 for (ItemStack stack : alternatives) {
                     if (!ItemStacks.isEmpty(stack)) {
                         copies.add(stack.copy());
@@ -301,25 +302,7 @@ public class StructurePreviewHandler extends TemplateRecipeHandler {
                 if (copies.isEmpty()) {
                     continue;
                 }
-                String key = alternativesKey(copies);
-                if (!groupedAlternatives.containsKey(key)) {
-                    groupedAlternatives.put(key, copies);
-                    groupedCounts.put(key, 1);
-                } else {
-                    groupedCounts.put(key, groupedCounts.get(key) + 1);
-                }
-            }
-
-            int index = 0;
-            for (Map.Entry<String, List<ItemStack>> entry : groupedAlternatives.entrySet()) {
-                int count = groupedCounts.get(entry.getKey());
-                List<ItemStack> stacks = new ArrayList<>(entry.getValue().size());
-                for (ItemStack stack : entry.getValue()) {
-                    ItemStack copy = stack.copy();
-                    copy.stackSize = count;   // NEI 直接显示 stackSize 作为数量
-                    stacks.add(copy);
-                }
-                blocks.add(new PositionedStack(stacks, 1 + (index % PER_ROW) * 18, LIST_TOP + 1 + (index / PER_ROW) * 18, false));
+                blocks.add(new PositionedStack(copies, 1 + (index % PER_ROW) * 18, LIST_TOP + 1 + (index / PER_ROW) * 18, false));
                 index++;
             }
             int rows = (index + PER_ROW - 1) / PER_ROW;
@@ -458,16 +441,6 @@ public class StructurePreviewHandler extends TemplateRecipeHandler {
             all.addAll(selectedSlots);
             return getCycledIngredients(cycleticks / 20, all);
         }
-    }
-
-    /** 方块组合的归一化键：按 item + meta 排序后拼接，用于把完全相同的一组替选合并。 */
-    private static String alternativesKey(List<ItemStack> alternatives) {
-        List<String> ids = new ArrayList<>(alternatives.size());
-        for (ItemStack stack : alternatives) {
-            ids.add(stack.getItem().getUnlocalizedName() + "@" + stack.getItemDamage());
-        }
-        Collections.sort(ids);
-        return String.join("|", ids);
     }
 
     static ItemStack controllerItem(DynamicMachine machine) {
