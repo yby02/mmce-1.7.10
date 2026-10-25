@@ -287,7 +287,10 @@ public class StructurePreviewHandler extends TemplateRecipeHandler {
             this.controllerStack = controller == null ? null : new PositionedStack(controller, WIDTH - 17, 114, false);
 
             List<List<ItemStack>> ingredients = context.getStructurePattern().getIngredientList();
-            int index = 0;
+            // 把“可接受方块组相同”的位置合并成一个条目，数量作为堆叠数显示：
+            // 例如 9 个都接受任意尺寸输入仓的位置，显示为 1 格、数量 9，轮换时整组一起换。
+            Map<String, List<ItemStack>> groupedAlternatives = new java.util.LinkedHashMap<>();
+            Map<String, Integer> groupedCounts = new java.util.LinkedHashMap<>();
             for (List<ItemStack> alternatives : ingredients) {
                 List<ItemStack> copies = new ArrayList<>();
                 for (ItemStack stack : alternatives) {
@@ -298,7 +301,25 @@ public class StructurePreviewHandler extends TemplateRecipeHandler {
                 if (copies.isEmpty()) {
                     continue;
                 }
-                blocks.add(new PositionedStack(copies, 1 + (index % PER_ROW) * 18, LIST_TOP + 1 + (index / PER_ROW) * 18, false));
+                String key = alternativesKey(copies);
+                if (!groupedAlternatives.containsKey(key)) {
+                    groupedAlternatives.put(key, copies);
+                    groupedCounts.put(key, 1);
+                } else {
+                    groupedCounts.put(key, groupedCounts.get(key) + 1);
+                }
+            }
+
+            int index = 0;
+            for (Map.Entry<String, List<ItemStack>> entry : groupedAlternatives.entrySet()) {
+                int count = groupedCounts.get(entry.getKey());
+                List<ItemStack> stacks = new ArrayList<>(entry.getValue().size());
+                for (ItemStack stack : entry.getValue()) {
+                    ItemStack copy = stack.copy();
+                    copy.stackSize = count;   // NEI 直接显示 stackSize 作为数量
+                    stacks.add(copy);
+                }
+                blocks.add(new PositionedStack(stacks, 1 + (index % PER_ROW) * 18, LIST_TOP + 1 + (index / PER_ROW) * 18, false));
                 index++;
             }
             int rows = (index + PER_ROW - 1) / PER_ROW;
@@ -437,6 +458,16 @@ public class StructurePreviewHandler extends TemplateRecipeHandler {
             all.addAll(selectedSlots);
             return getCycledIngredients(cycleticks / 20, all);
         }
+    }
+
+    /** 方块组合的归一化键：按 item + meta 排序后拼接，用于把完全相同的一组替选合并。 */
+    private static String alternativesKey(List<ItemStack> alternatives) {
+        List<String> ids = new ArrayList<>(alternatives.size());
+        for (ItemStack stack : alternatives) {
+            ids.add(stack.getItem().getUnlocalizedName() + "@" + stack.getItemDamage());
+        }
+        Collections.sort(ids);
+        return String.join("|", ids);
     }
 
     static ItemStack controllerItem(DynamicMachine machine) {
