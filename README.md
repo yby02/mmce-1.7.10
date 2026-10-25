@@ -27,7 +27,7 @@ export JAVA8_HOME=/path/to/jdk-8
 ./gradlew build
 ```
 
-产物在 `build/libs/`，发布用 `modularmachinery-2.3.3-mc1.7.10.jar`。
+产物在 `build/libs/`，发布用 `modularmachinery-2.3.4-mc1.7.10.jar`。
 
 ## 许可证
 
