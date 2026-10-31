@@ -183,12 +183,31 @@ import crafttweaker.util.IAxisAlignedBB;
 import minetweaker.item.IItemStack;
 import minetweaker.item.IIngredient;
 import minetweaker.item.IItemDefinition;
-import minetweaker.item.IOreDictEntry;
+import minetweaker.oredict.IOreDictEntry;   // 注意是 oredict 包，不是 item 包
+import minetweaker.oredict.IOreDict;
 import minetweaker.liquid.ILiquidStack;
 import minetweaker.data.IData;
-import minetweaker.entity.IEntityItem;
-import minetweaker.api.event.IEventManager;
+import minetweaker.entity.IEntity;
 ```
+
+> 以下类型**没有** `@ZenClass` 注解，**不能 import**（在游戏里会报 `No such member`）：
+>
+> | 错误写法 | 说明 |
+> |---|---|
+> | `minetweaker.item.IOreDictEntry` | 包名错，应为 `minetweaker.oredict.IOreDictEntry` |
+> | `minetweaker.entity.IEntityItem` | 该类型未注册给 ZenScript，用 `IEntity` 代替 |
+> | `minetweaker.api.event.IEventManager` | 未注册；`events` 是内置全局变量，直接用即可 |
+> | `minetweaker.api.event.PlayerLoggedInEvent` 等 | 包名错，玩家事件在 `minetweaker.event.*` |
+>
+> 玩家事件正确写法：
+>
+> ```zenscript
+> import minetweaker.event.PlayerLoggedInEvent;
+>
+> events.onPlayerLoggedIn(function(event as PlayerLoggedInEvent) {
+>     print(event.player.name);
+> });
+> ```
 
 ### 3.4 1.12.2 写法 → 1.7.10 对照
 
@@ -196,15 +215,20 @@ import minetweaker.api.event.IEventManager;
 |---|---|---|
 | `crafttweaker.item.IItemStack` | `minetweaker.item.IItemStack` | 改命名空间 |
 | `crafttweaker.item.IIngredient` | `minetweaker.item.IIngredient` | 改命名空间 |
+| `crafttweaker.oredict.IOreDictEntry` | `minetweaker.oredict.IOreDictEntry` | 改命名空间 |
 | `crafttweaker.liquid.ILiquidStack` | `minetweaker.liquid.ILiquidStack` | 改命名空间 |
 | `crafttweaker.data.IData` | `minetweaker.data.IData` | 改命名空间 |
 | `crafttweaker.world.IWorld` | `crafttweaker.world.IWorld` | **不变**（shim） |
 | `crafttweaker.world.IBlockPos` | `crafttweaker.world.IBlockPos` | **不变**（shim） |
+| `crafttweaker.entity.IEntity` | `minetweaker.entity.IEntity` | 改命名空间 |
+| `crafttweaker.entity.IEntityItem` | — | **不存在**，用 `IEntity` |
 | `crafttweaker.enchantments.IEnchantment` | — | **不存在** |
 | `crafttweaker.util.Math` | — | **不存在** |
+| `crafttweaker.events.IEventManager` | — | **不存在**，`events` 是全局变量 |
 | `crafttweaker.event.EntityLivingDeathEvent` | — | **不存在** |
 | `crafttweaker.event.ItemTossEvent` | — | **不存在** |
 | `crafttweaker.event.EntityJoinWorldEvent` | — | **不存在** |
+| `crafttweaker.event.PlayerLoggedInEvent` | `minetweaker.event.PlayerLoggedInEvent` | 改命名空间 |
 
 MineTweaker3 只提供玩家相关的这一组事件（`events.onXxx`）：
 
@@ -620,6 +644,39 @@ newBuilder(String recipeRegistryName, String machineName, int processingTickTime
 
 .addCatalystInput(<item>, ["提示"], [modifier...])  // 催化剂
 ```
+
+### 6.2.1 矿物词典输入输出
+
+三种写法都可用，推荐第一种：
+
+```zenscript
+// 推荐：用 * 指定数量
+.addItemInput(<ore:ingotIron> * 2)
+.addItemOutput(<ore:ingotGold> * 1)
+
+// 也可用显式重载（会打印一条 deprecated 警告，但功能正常）
+.addItemInput(<ore:ingotIron>, 2)
+.addItemOutput(<ore:ingotGold>, 1)
+
+// 不带数量默认为 1
+.addItemInput(<ore:ingotIron>)
+```
+
+催化剂同样支持：
+
+```zenscript
+.addCatalystInput(<ore:circuitBasic> * 1, ["控制器"], [])
+```
+
+> **关于 `Invalid input type ... IngredientStack` 报错**
+>
+> 1.7.10 的 MineTweaker3 里 `<ore:x> * n` 得到的是 `IngredientStack`，而它的内部可能是
+> `IngredientOreDict`（只实现 `IIngredient`，**不是** `IOreDictEntry`）。
+> 早期版本只判断一层 `instanceof`，遇到这种包装就会报错并把该输入丢弃。
+> **2.3.4 之后的构建已修复**：现在会沿 `getInternal()` 逐层拆开包装，
+> `IngredientStack`、`IngredientOreDict`、`IngredientCondition` 等都能正确识别。
+>
+> 若你用的是 2.3.4 或更早的 jar，请改用 `.addItemInput(<ore:x>, n)` 这种显式重载。
 
 ### 6.3 气体（需要 Mekanism）
 
@@ -1189,7 +1246,7 @@ events.onPlayerLoggedIn(function(event) { ... });
 1.7.10 使用 MineTweaker3 的 `events`：
 
 ```zenscript
-import minetweaker.api.event.PlayerLoggedInEvent;
+import minetweaker.event.PlayerLoggedInEvent;   // 注意是 minetweaker.event，不是 minetweaker.api.event
 events.onPlayerLoggedIn(function(event as PlayerLoggedInEvent) {
     print(event.player.name);
 });

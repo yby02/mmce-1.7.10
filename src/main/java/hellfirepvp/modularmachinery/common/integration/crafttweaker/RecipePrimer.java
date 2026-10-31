@@ -430,14 +430,48 @@ public class RecipePrimer implements PreparedRecipe {
     //----------------------------------------------------------------------------------------------
     // General Input & Output
     //----------------------------------------------------------------------------------------------
+    /**
+     * 逐层拆开 {@link IIngredient} 的包装，返回最内层的真实类型。
+     * <p>
+     * 1.7.10 的 MineTweaker3 里 {@code <ore:x> * n} 得到的是 {@code IngredientStack}，而它的内部可能还是
+     * {@code IngredientOreDict}（只实现 {@code IIngredient}，<b>不是</b> {@code IOreDictEntry}），
+     * 因此只判断一层 {@code instanceof} 会漏掉这类写法并报 "Invalid input type"。
+     * 这里沿 {@code getInternal()} 逐层向下，遇到 {@code IOreDictEntry} 或 {@code IItemStack} 立即返回。
+     */
+    private static Object unwrapIngredient(IIngredient ingredient) {
+        Object current = ingredient;
+        for (int depth = 0; depth < 8; depth++) {
+            if (current instanceof IOreDictEntry || current instanceof IItemStack) {
+                return current;
+            }
+            if (!(current instanceof IIngredient)) {
+                return current;
+            }
+            Object internal = ((IIngredient) current).getInternal();
+            if (internal == null || internal == current) {
+                return current;
+            }
+            current = internal;
+        }
+        return current;
+    }
+
+    /** 该 {@link IIngredient} 最终是否指向一个矿物词典条目。 */
+    private static boolean isOreDictIngredient(IIngredient ingredient) {
+        return unwrapIngredient(ingredient) instanceof IOreDictEntry;
+    }
+
+    /** 该 {@link IIngredient} 最终是否指向一个具体物品。 */
+    private static boolean isItemIngredient(IIngredient ingredient) {
+        return unwrapIngredient(ingredient) instanceof IItemStack;
+    }
+
     @ZenMethod
     public RecipePrimer addInput(IIngredient input) {
         if (isNullArgument(input, "addInput")) {
             return this;
         }
-        if (input instanceof IItemStack ||
-            input instanceof IOreDictEntry ||
-            input instanceof IngredientStack && input.getInternal() instanceof IOreDictEntry) {
+        if (isItemIngredient(input) || isOreDictIngredient(input)) {
             addItemInput(input);
         } else if (input instanceof ILiquidStack liquidStack) {
             addFluidInput(liquidStack);
@@ -462,9 +496,7 @@ public class RecipePrimer implements PreparedRecipe {
         if (isNullArgument(output, "addOutput")) {
             return this;
         }
-        if (output instanceof IItemStack ||
-            output instanceof IOreDictEntry ||
-            output instanceof IngredientStack && output.getInternal() instanceof IOreDictEntry) {
+        if (isItemIngredient(output) || isOreDictIngredient(output)) {
             addItemOutput(output);
         } else if (output instanceof ILiquidStack) {
             addFluidOutput((ILiquidStack) output);
@@ -677,12 +709,15 @@ public class RecipePrimer implements PreparedRecipe {
         if (isNullArgument(input, "addItemInput")) {
             return this;
         }
-        if (input instanceof IItemStack) {
-            requireItem(IOType.INPUT, (IItemStack) input);
-        } else if (input instanceof IOreDictEntry) {
-            requireItem(IOType.INPUT, ((IOreDictEntry) input).getName(), 1);
-        } else if (input instanceof IngredientStack && input.getInternal() instanceof IOreDictEntry) {
-            requireItem(IOType.INPUT, ((IOreDictEntry) input.getInternal()).getName(), input.getAmount());
+        Object core = unwrapIngredient(input);
+        if (core instanceof IOreDictEntry oreDict) {
+            requireItem(IOType.INPUT, oreDict.getName(), Math.max(1, input.getAmount()));
+        } else if (core instanceof IItemStack stack) {
+            int amount = input.getAmount();
+            if (amount > 0 && amount != stack.getAmount()) {
+                stack = stack.amount(amount);
+            }
+            requireItem(IOType.INPUT, stack);
         } else {
             CraftTweakerAPI.logError(String.format("[ModularMachinery] Invalid input type %s(%s)! Ignored.", input, input.getClass()));
         }
@@ -744,12 +779,15 @@ public class RecipePrimer implements PreparedRecipe {
         if (isNullArgument(output, "addItemOutput")) {
             return this;
         }
-        if (output instanceof IItemStack) {
-            requireItem(IOType.OUTPUT, (IItemStack) output);
-        } else if (output instanceof IOreDictEntry) {
-            requireItem(IOType.OUTPUT, ((IOreDictEntry) output).getName(), 1);
-        } else if (output instanceof IngredientStack && output.getInternal() instanceof IOreDictEntry) {
-            requireItem(IOType.OUTPUT, ((IOreDictEntry) output.getInternal()).getName(), output.getAmount());
+        Object core = unwrapIngredient(output);
+        if (core instanceof IOreDictEntry oreDict) {
+            requireItem(IOType.OUTPUT, oreDict.getName(), Math.max(1, output.getAmount()));
+        } else if (core instanceof IItemStack stack) {
+            int amount = output.getAmount();
+            if (amount > 0 && amount != stack.getAmount()) {
+                stack = stack.amount(amount);
+            }
+            requireItem(IOType.OUTPUT, stack);
         } else {
             CraftTweakerAPI.logError(String.format("[ModularMachinery] Invalid output type %s(%s)! Ignored.", output, output.getClass()));
         }
@@ -788,12 +826,11 @@ public class RecipePrimer implements PreparedRecipe {
         if (isNullArgument(input, "addCatalystInput")) {
             return this;
         }
-        if (input instanceof IItemStack) {
-            requireCatalyst((IItemStack) input, tooltips, modifiers);
-        } else if (input instanceof IOreDictEntry) {
-            requireCatalyst(((IOreDictEntry) input).getName(), 1, tooltips, modifiers);
-        } else if (input instanceof IngredientStack && input.getInternal() instanceof IOreDictEntry) {
-            requireCatalyst(((IOreDictEntry) input.getInternal()).getName(), input.getAmount(), tooltips, modifiers);
+        Object core = unwrapIngredient(input);
+        if (core instanceof IOreDictEntry oreDict) {
+            requireCatalyst(oreDict.getName(), Math.max(1, input.getAmount()), tooltips, modifiers);
+        } else if (core instanceof IItemStack stack) {
+            requireCatalyst(stack, tooltips, modifiers);
         } else {
             CraftTweakerAPI.logError(String.format("[ModularMachinery] Invalid input type %s(%s)! Ignored.", input, input.getClass()));
         }
