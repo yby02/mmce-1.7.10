@@ -716,7 +716,7 @@ newBuilder(String recipeRegistryName, String machineName, int processingTickTime
 .addSmartInterfaceDataInput("type", 50.0)        // 固定值
 .setParallelizeUnaffected(true)     // 并行不影响
 .setNBTChecker(checker)             // NBT 检查器
-.addItemModifier(modifier)          // 物品修改器
+.addItemModifier(modifier)          // 动态改写物品，见 6.7
 .addIngredientArrayInput(primer)    // 多物品数组输入
 ```
 
@@ -744,6 +744,139 @@ RecipeBuilder.newBuilder("random_recipe", "my_machine", 100)
   .addRandomItemOutput(pool)
   .build();
 ```
+
+### 6.7 动态改写物品（AdvancedItemModifier）
+
+`mods.modularmachinery.AdvancedItemModifier` 是配方**执行时**动态改写物品的回调：
+
+```java
+IItemStack apply(IMachineController controller, IItemStack stack);
+```
+
+- `controller` —— 当前机器控制器，可读 `customData`、`isWorking`、`formedMachineName`、智能接口、升级等
+- `stack` —— 当前正在处理的物品
+- 返回值 —— **替换**该物品
+
+#### 挂载位置
+
+两个入口，都叫 `.addItemModifier(...)`：
+
+| 入口 | 作用对象 |
+|---|---|
+| `RecipePrimer.addItemModifier` | **最近一个**物品需求（`addItemInput` / `addItemOutput` / `addCatalystInput`） |
+| `IngredientArrayPrimer.addItemModifier` | **最近一个** `addIngredient` / `addChancedIngredient`（随机产出池里的一项） |
+
+它作用于「最近一个」组件，**必须紧跟在目标物品后面**：
+
+```zenscript
+RecipeBuilder.newBuilder("x", "my_machine", 100)
+  .addItemInput(<minecraft:iron_ingot>)
+  .addItemModifier(function(c, stack) { return stack.amount(4); })   // 作用于此输入
+  .addItemOutput(<minecraft:gold_ingot>)
+  .build();
+```
+
+写错位置会打印：
+
+```
+addItemModifier(AdvancedItemModifier checker) only can be applied to `Item`!
+```
+
+**只对物品有效**，对流体 / 能量 / 气体 / 智能接口无效。
+
+#### 生效方式（源码行为）
+
+**输出侧** —— 改产出：
+
+```java
+for (modifier) stack = modifier.apply(controller, stack);
+toInsert *= ItemStacks.getCount(stack);   // 用改后的数量作为实际产出
+ItemStacks.setCount(stack, 1);
+```
+
+**输入侧** —— 改需求量：
+
+```java
+ItemStacks.setCount(stack, toConsume);
+for (modifier) stack = modifier.apply(controller, stack);
+toConsume = ItemStacks.getCount(stack);   // 用改后的数量去仓库里找并消耗
+```
+
+#### 示例
+
+**1. 按机器状态动态产出**
+
+```zenscript
+import mods.modularmachinery.RecipeBuilder;
+import mods.modularmachinery.IMachineController;
+import minetweaker.item.IItemStack;
+
+RecipeBuilder.newBuilder("temp_output", "my_machine", 100)
+  .addItemInput(<minecraft:iron_ingot> * 2)
+  .addItemOutput(<minecraft:gold_ingot>)
+  .addItemModifier(function(controller as IMachineController, stack as IItemStack) as IItemStack {
+      val data = controller.customData;
+      if (data == null) {
+          return stack;
+      }
+      var amount = (data.temperature as int) / 500;   // 1000K → 2 个
+      if (amount < 1) {
+          amount = 1;
+      }
+      return stack.amount(amount);
+  })
+  .build();
+```
+
+**2. 给产物打上机器信息**
+
+```zenscript
+  .addItemOutput(<minecraft:gold_ingot>)
+  .addItemModifier(function(controller as IMachineController, stack as IItemStack) as IItemStack {
+      return stack.withTag({
+          mmce: {
+              pos: controller.pos.x ~ "," ~ controller.pos.y ~ "," ~ controller.pos.z,
+              machine: controller.formedMachineName
+          }
+      });
+  })
+```
+
+**3. 按升级数量放大产出**
+
+```zenscript
+  .addItemModifier(function(controller as IMachineController, stack as IItemStack) as IItemStack {
+      var mul = 1;
+      if (controller.hasMachineUpgrade("parallel_upgrade")) {
+          mul = controller.getMachineUpgrade("parallel_upgrade").length;
+      }
+      return stack.amount(mul);
+  })
+```
+
+**4. 随机产出池里改产物**
+
+```zenscript
+import mods.modularmachinery.IngredientArrayBuilder;
+
+val pool = IngredientArrayBuilder.newBuilder()
+    .addChancedIngredient(<minecraft:diamond>, 0.1)
+    .addItemModifier(function(c, stack) { return stack.amount(3); });
+
+RecipeBuilder.newBuilder("pool_recipe", "my_machine", 100)
+    .addItemInput(<minecraft:stone>)
+    .addRandomItemOutput(pool)
+    .build();
+```
+
+#### 注意点
+
+1. **必须紧跟在目标物品后**，中间不能插入其它 `addXxx`，否则会挂到别的组件上。
+2. `stack.amount(n)` 返回**新对象**，必须 `return` 出去；就地修改不生效。
+3. **返回 `null` 不会崩溃**。`ItemStacks.getCount(null)` 返回 0，输出侧变成「不产出」。
+   但**输入侧返回 `null` 会让需求量变成 0**，源码此时直接视为消耗成功 —— 等于不消耗材料。需要限制玩家时不要在输入侧返回 `null`。
+4. **输入侧改大数量要谨慎**：改后的数量会拿去仓库里实际查找，凑不够配方就启动不了。
+5. 它与 `setNBTChecker` / `AdvancedItemChecker` **不同**：那个是**检查**物品是否匹配，这个是**改写**物品。
 
 ---
 
