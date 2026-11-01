@@ -440,25 +440,87 @@ public class RecipePrimer implements PreparedRecipe {
      */
     private static Object unwrapIngredient(IIngredient ingredient) {
         Object current = ingredient;
-        for (int depth = 0; depth < 8; depth++) {
+        for (int depth = 0; depth < 8 && current != null; depth++) {
             if (current instanceof IOreDictEntry || current instanceof IItemStack) {
                 return current;
             }
-            if (!(current instanceof IIngredient)) {
+            Object next = null;
+            // getInternal() 只有在真的返回 IIngredient 时才有用：
+            // IngredientStack.getInternal() 恒为 null，IngredientOreDict.getInternal() 返回矿词名字符串。
+            if (current instanceof IIngredient wrapped) {
+                Object internal = wrapped.getInternal();
+                if (internal instanceof IOreDictEntry || internal instanceof IItemStack) {
+                    next = internal;
+                }
+            }
+            if (next == null) {
+                // 真正的内部对象藏在私有字段里：IngredientStack.ingredient / IngredientOreDict.entry
+                next = firstIngredientField(current);
+            }
+            if (next == null && current instanceof IIngredient wrappedAgain) {
+                // 兜底：IngredientOreDict.getInternal() 返回的是矿词名字符串
+                Object internal = wrappedAgain.getInternal();
+                if (internal instanceof String name && !name.isEmpty()
+                    && net.minecraftforge.oredict.OreDictionary.doesOreNameExist(name)) {
+                    return name;
+                }
+            }
+            if (next == null || next == current) {
                 return current;
             }
-            Object internal = ((IIngredient) current).getInternal();
-            if (internal == null || internal == current) {
-                return current;
-            }
-            current = internal;
+            current = next;
         }
         return current;
     }
 
+    /**
+     * 诊断用：把 ingredient 的类名与全部字段（名字、类型、实际值类型）拼成一行，
+     * 用于在拆包失败时把真实结构写进日志。
+     */
+    private static String describeIngredient(IIngredient ingredient) {
+        StringBuilder sb = new StringBuilder(ingredient.getClass().getName());
+        for (java.lang.reflect.Field field : ingredient.getClass().getDeclaredFields()) {
+            sb.append("; ").append(field.getName())
+              .append('(').append(field.getType().getSimpleName()).append(")=");
+            try {
+                field.setAccessible(true);
+                Object value = field.get(ingredient);
+                sb.append(value == null ? "null" : value.getClass().getName());
+            } catch (Throwable ignored) {
+                sb.append("<inaccessible>");
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 反射读取 holder 上第一个 {@link IIngredient} 类型的私有字段值。
+     * <p>
+     * MineTweaker3 的 {@code IngredientStack} / {@code IngredientOreDict} 都没有公开访问器，
+     * 且 {@code getInternal()} 分别返回 null 与矿词名，拿不到内部对象，只能读字段。
+     */
+    private static Object firstIngredientField(Object holder) {
+        for (java.lang.reflect.Field field : holder.getClass().getDeclaredFields()) {
+            if (!IIngredient.class.isAssignableFrom(field.getType())) {
+                continue;
+            }
+            try {
+                field.setAccessible(true);
+                Object value = field.get(holder);
+                if (value != null && value != holder) {
+                    return value;
+                }
+            } catch (Throwable ignored) {
+                // 字段不可访问时跳过，继续找下一个
+            }
+        }
+        return null;
+    }
+
     /** 该 {@link IIngredient} 最终是否指向一个矿物词典条目。 */
     private static boolean isOreDictIngredient(IIngredient ingredient) {
-        return unwrapIngredient(ingredient) instanceof IOreDictEntry;
+        Object core = unwrapIngredient(ingredient);
+        return core instanceof IOreDictEntry || core instanceof String;
     }
 
     /** 该 {@link IIngredient} 最终是否指向一个具体物品。 */
@@ -478,7 +540,7 @@ public class RecipePrimer implements PreparedRecipe {
         } else if (Mods.MEKANISM.isPresent() && MekanismZenSupport.isGas(input)) {
             MekanismZenSupport.addGas(this, input, IOType.INPUT);
         } else {
-            CraftTweakerAPI.logError(String.format("[ModularMachinery] Invalid input type %s(%s)! Ignored.", input, input.getClass()));
+            CraftTweakerAPI.logError(String.format("[ModularMachinery] Invalid input type %s(%s)! Ignored. 字段: %s", input, input.getClass(), describeIngredient(input)));
         }
         return this;
     }
@@ -503,7 +565,7 @@ public class RecipePrimer implements PreparedRecipe {
         } else if (Mods.MEKANISM.isPresent() && MekanismZenSupport.isGas(output)) {
             MekanismZenSupport.addGas(this, output, IOType.OUTPUT);
         } else {
-            CraftTweakerAPI.logError(String.format("[ModularMachinery] Invalid output type %s(%s)! Ignored.", output, output.getClass()));
+            CraftTweakerAPI.logError(String.format("[ModularMachinery] Invalid output type %s(%s)! Ignored. 字段: %s", output, output.getClass(), describeIngredient(output)));
         }
         return this;
     }
@@ -712,6 +774,8 @@ public class RecipePrimer implements PreparedRecipe {
         Object core = unwrapIngredient(input);
         if (core instanceof IOreDictEntry oreDict) {
             requireItem(IOType.INPUT, oreDict.getName(), Math.max(1, input.getAmount()));
+        } else if (core instanceof String oreName) {
+            requireItem(IOType.INPUT, oreName, Math.max(1, input.getAmount()));
         } else if (core instanceof IItemStack stack) {
             int amount = input.getAmount();
             if (amount > 0 && amount != stack.getAmount()) {
@@ -719,7 +783,7 @@ public class RecipePrimer implements PreparedRecipe {
             }
             requireItem(IOType.INPUT, stack);
         } else {
-            CraftTweakerAPI.logError(String.format("[ModularMachinery] Invalid input type %s(%s)! Ignored.", input, input.getClass()));
+            CraftTweakerAPI.logError(String.format("[ModularMachinery] Invalid input type %s(%s)! Ignored. 字段: %s", input, input.getClass(), describeIngredient(input)));
         }
 
         return this;
@@ -782,6 +846,8 @@ public class RecipePrimer implements PreparedRecipe {
         Object core = unwrapIngredient(output);
         if (core instanceof IOreDictEntry oreDict) {
             requireItem(IOType.OUTPUT, oreDict.getName(), Math.max(1, output.getAmount()));
+        } else if (core instanceof String oreName) {
+            requireItem(IOType.OUTPUT, oreName, Math.max(1, output.getAmount()));
         } else if (core instanceof IItemStack stack) {
             int amount = output.getAmount();
             if (amount > 0 && amount != stack.getAmount()) {
@@ -789,7 +855,7 @@ public class RecipePrimer implements PreparedRecipe {
             }
             requireItem(IOType.OUTPUT, stack);
         } else {
-            CraftTweakerAPI.logError(String.format("[ModularMachinery] Invalid output type %s(%s)! Ignored.", output, output.getClass()));
+            CraftTweakerAPI.logError(String.format("[ModularMachinery] Invalid output type %s(%s)! Ignored. 字段: %s", output, output.getClass(), describeIngredient(output)));
         }
 
         return this;
@@ -829,10 +895,12 @@ public class RecipePrimer implements PreparedRecipe {
         Object core = unwrapIngredient(input);
         if (core instanceof IOreDictEntry oreDict) {
             requireCatalyst(oreDict.getName(), Math.max(1, input.getAmount()), tooltips, modifiers);
+        } else if (core instanceof String oreName) {
+            requireCatalyst(oreName, Math.max(1, input.getAmount()), tooltips, modifiers);
         } else if (core instanceof IItemStack stack) {
             requireCatalyst(stack, tooltips, modifiers);
         } else {
-            CraftTweakerAPI.logError(String.format("[ModularMachinery] Invalid input type %s(%s)! Ignored.", input, input.getClass()));
+            CraftTweakerAPI.logError(String.format("[ModularMachinery] Invalid input type %s(%s)! Ignored. 字段: %s", input, input.getClass(), describeIngredient(input)));
         }
 
         return this;
